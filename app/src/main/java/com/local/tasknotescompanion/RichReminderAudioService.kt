@@ -3,19 +3,34 @@ package com.local.tasknotescompanion
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.local.tasknotescompanion.notifications.ReminderScheduler
+import com.local.tasknotescompanion.notifications.ReminderReceiver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
 class RichReminderAudioService : Service() {
     private var player: MediaPlayer? = null
+    private var overlayView: View? = null
+    private var overlayIntent: Intent? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -29,6 +44,7 @@ class RichReminderAudioService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        removeOverlay()
         stopPlayback()
         super.onDestroy()
     }
@@ -60,30 +76,162 @@ class RichReminderAudioService : Service() {
                 .setOngoing(true)
                 .build(),
         )
-        val notification = NotificationCompat.Builder(this, ReminderScheduler.RICH_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(fullScreenIntent)
-            .setFullScreenIntent(fullScreenIntent, true)
-            .setAutoCancel(false)
-            .build()
-        NotificationManagerCompat.from(this).notify(notificationId, notification)
-        Log.i(TAG, "Posted rich full-screen notification for $scheduleId")
+        val showedOverlay = showOverlayIfAllowed(intent)
+        if (!showedOverlay) {
+            val notification = NotificationCompat.Builder(this, ReminderScheduler.RICH_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setContentIntent(fullScreenIntent)
+                .setFullScreenIntent(fullScreenIntent, true)
+                .setAutoCancel(false)
+                .build()
+            NotificationManagerCompat.from(this).notify(notificationId, notification)
+            Log.i(TAG, "Posted rich full-screen notification fallback for $scheduleId")
+        }
 
         handleDeliveredReminder(intent)
         val audio = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_AUDIO)
         if (!audio.isNullOrBlank()) {
             play(audio, intent.getBooleanExtra(ReminderScheduler.EXTRA_ALERT_AUDIO_LOOP, true), ensureForeground = false)
-        } else {
+        } else if (!showedOverlay) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
+    }
+
+    private fun showOverlayIfAllowed(intent: Intent): Boolean {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Overlay permission is not granted; falling back to full-screen notification")
+            return false
+        }
+        overlayIntent = Intent(intent)
+        removeOverlay()
+        return runCatching {
+            val title = intent.getStringExtra(ReminderScheduler.EXTRA_TASK_TITLE).orEmpty().ifBlank { "Task reminder" }
+            val note = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_NOTE)
+                ?: intent.getStringExtra(ReminderScheduler.EXTRA_DESCRIPTION)
+                ?: ""
+            val imagePath = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_IMAGE)
+            val view = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(0xFFFCFBF8.toInt())
+
+                addView(ScrollView(context).apply {
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        setPadding(dp(40), dp(96), dp(40), dp(28))
+
+                        imagePath?.let { path ->
+                            val file = File(path)
+                            Log.i(TAG, "Loading overlay image ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
+                            val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
+                                .onFailure { Log.e(TAG, "Failed to decode overlay image: ${file.absolutePath}", it) }
+                                .getOrNull()
+                            if (bitmap != null) {
+                                addView(ImageView(context).apply {
+                                    setImageBitmap(bitmap)
+                                    adjustViewBounds = true
+                                    scaleType = ImageView.ScaleType.FIT_CENTER
+                                    maxHeight = dp(300)
+                                }, LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                ).apply { setMargins(0, 0, 0, dp(32)) })
+                            }
+                        }
+
+                        addView(LinearLayout(context).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(40), dp(30), dp(40), dp(30))
+                            setBackgroundColor(0xEE20283B.toInt())
+                            addView(TextView(context).apply {
+                                text = title
+                                textSize = 30f
+                                setTextColor(0xFFFFFFFF.toInt())
+                            })
+                            if (note.isNotBlank()) {
+                                addView(TextView(context).apply {
+                                    text = note
+                                    textSize = 20f
+                                    setTextColor(0xFFDDE3EF.toInt())
+                                }, LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                ).apply { setMargins(0, dp(12), 0, 0) })
+                            }
+                        }, LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).apply { setMargins(-dp(40), 0, -dp(40), 0) })
+                    })
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ))
+
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(40), dp(24), dp(40), dp(40))
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        addView(actionButton("Edit") { editTaskFromOverlay() }, weightedButtonParams())
+                        addView(actionButton("Snooze") { snoozeFromOverlay() }, weightedButtonParams())
+                    })
+                    addView(actionButton("Complete") { completeFromOverlay() }, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(58),
+                    ).apply { setMargins(dp(8), dp(8), dp(8), dp(8)) })
+                    addView(actionButton("Dismiss") { dismissOverlayReminder() }.apply {
+                        backgroundTintList = ColorStateList.valueOf(0xFF2E7655.toInt())
+                        setTextColor(0xFFFFFFFF.toInt())
+                    }, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(64),
+                    ).apply { setMargins(dp(8), dp(20), dp(8), 0) })
+                })
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
+                },
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+                android.graphics.PixelFormat.OPAQUE,
+            ).apply {
+                gravity = Gravity.CENTER
+            }
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            windowManager.addView(view, params)
+            overlayView = view
+            Log.i(TAG, "Showing rich reminder overlay for ${intent.getStringExtra(ReminderScheduler.EXTRA_SCHEDULE_ID)}")
+            true
+        }.onFailure {
+            Log.e(TAG, "Failed to show rich reminder overlay", it)
+        }.getOrDefault(false)
+    }
+
+    private fun removeOverlay() {
+        val view = overlayView ?: return
+        runCatching {
+            (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(view)
+        }.onFailure {
+            Log.w(TAG, "Failed to remove rich reminder overlay", it)
+        }
+        overlayView = null
     }
 
     private fun handleDeliveredReminder(intent: Intent) {
@@ -146,6 +294,7 @@ class RichReminderAudioService : Service() {
     }
 
     private fun stopPlayback() {
+        removeOverlay()
         releasePlayer()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -157,6 +306,59 @@ class RichReminderAudioService : Service() {
             release()
         }
         player = null
+    }
+
+    private fun editTaskFromOverlay() {
+        val source = overlayIntent
+        dismissOverlayReminder(stopAudio = true)
+        startActivity(Intent(this, MainActivity::class.java)
+            .setAction(ReminderScheduler.ACTION_OPEN_TASK)
+            .putExtra(ReminderScheduler.EXTRA_TASK_ID, source?.getStringExtra(ReminderScheduler.EXTRA_TASK_ID))
+            .putExtra(ReminderScheduler.EXTRA_TASK_PATH, source?.getStringExtra(ReminderScheduler.EXTRA_TASK_PATH))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    }
+
+    private fun snoozeFromOverlay() {
+        sendReminderAction(ReminderScheduler.ACTION_SNOOZE_10)
+        dismissOverlayReminder()
+    }
+
+    private fun completeFromOverlay() {
+        sendReminderAction(ReminderScheduler.ACTION_COMPLETE)
+        dismissOverlayReminder()
+    }
+
+    private fun dismissOverlayReminder(stopAudio: Boolean = true) {
+        removeOverlay()
+        if (stopAudio) stopPlayback()
+    }
+
+    private fun sendReminderAction(action: String) {
+        val source = overlayIntent ?: return
+        sendBroadcast(Intent(this, ReminderReceiver::class.java)
+            .setAction(action)
+            .putExtra(ReminderScheduler.EXTRA_TASK_ID, source.getStringExtra(ReminderScheduler.EXTRA_TASK_ID))
+            .putExtra(ReminderScheduler.EXTRA_TASK_PATH, source.getStringExtra(ReminderScheduler.EXTRA_TASK_PATH))
+            .putExtra(ReminderScheduler.EXTRA_SCHEDULE_ID, source.getStringExtra(ReminderScheduler.EXTRA_SCHEDULE_ID)))
+    }
+
+    private fun actionButton(label: String, action: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            textSize = 18f
+            minHeight = dp(56)
+            setOnClickListener { action() }
+        }
+    }
+
+    private fun weightedButtonParams(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            setMargins(dp(8), dp(8), dp(8), dp(8))
+        }
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
     }
 
     companion object {

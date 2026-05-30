@@ -1418,6 +1418,21 @@ private fun SettingsScreen(
                 }
             }
             item {
+                OutlinedButton(
+                    onClick = {
+                        ContextCompat.startActivity(
+                            context,
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                .setData(Uri.parse("package:${context.packageName}")),
+                            null,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Overlay reminder permission")
+                }
+            }
+            item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = notificationPrefs.remindersEnabled,

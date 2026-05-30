@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".RichReminderDebugActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:theme="@style/Theme.TaskNotesCompanion" />
+        <receiver
+            android:name=".RichReminderDebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.local.tasknotescompanion.TEST_RICH_REMINDER" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
