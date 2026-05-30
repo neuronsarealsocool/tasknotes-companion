@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -475,6 +477,7 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
     }
     if (quickAddOpen) {
         QuickAddDialog(
+            vaultPath = state.vaultPath,
             onDismiss = { quickAddOpen = false },
             onCreate = { draft, openEditor ->
                 viewModel.createQuickTask(draft, openEditor)
@@ -486,9 +489,11 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
 
 @Composable
 private fun QuickAddDialog(
+    vaultPath: String,
     onDismiss: () -> Unit,
     onCreate: (QuickAddDraft, Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
     val parser = remember { QuickAddParser() }
     var rawText by remember { mutableStateOf("") }
     var target by remember { mutableStateOf(QuickAddDateTarget.SCHEDULED) }
@@ -500,6 +505,32 @@ private fun QuickAddDialog(
     var dateRemoved by remember { mutableStateOf(false) }
     var timeRemoved by remember { mutableStateOf(false) }
     var priorityRemoved by remember { mutableStateOf(false) }
+    var alertNote by rememberSaveable { mutableStateOf("") }
+    var alertImage by rememberSaveable { mutableStateOf<String?>(null) }
+    var alertAudio by rememberSaveable { mutableStateOf<String?>(null) }
+    var alertAudioLoop by rememberSaveable { mutableStateOf(true) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val relative = copyPickedMedia(context, vaultPath, uri, "image")
+            if (relative != null) {
+                alertImage = relative
+                Toast.makeText(context, "Photo added to default reminders", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Could not copy photo into vault", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val relative = copyPickedMedia(context, vaultPath, uri, "audio")
+            if (relative != null) {
+                alertAudio = relative
+                Toast.makeText(context, "Audio added to default reminders", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Could not copy audio into vault", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     LaunchedEffect(rawText, target) {
         title = parsed.title
@@ -521,6 +552,14 @@ private fun QuickAddDialog(
         projects = parsed.projects.filterNot { it in removedProjects },
         contexts = parsed.contexts.filterNot { it in removedContexts },
         priority = parsed.priority.takeUnless { priorityRemoved },
+        alert = ReminderAlert(
+            style = "fullscreen",
+            note = alertNote.ifBlank { null },
+            image = alertImage,
+            audio = alertAudio,
+            audioLoop = alertAudioLoop,
+            audioUntil = "dismiss",
+        ),
     )
     val hasSingleDate = parsed.scheduled != null && parsed.due == null || parsed.due != null && parsed.scheduled == null
 
@@ -530,7 +569,12 @@ private fun QuickAddDialog(
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surface,
         ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedTextField(
                     value = rawText,
                     onValueChange = { rawText = it },
@@ -609,6 +653,39 @@ private fun QuickAddDialog(
                         )
                     }
                     AssistChip(onClick = {}, label = { Text("Task File") })
+                }
+                Text("Reminder overlay", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = alertNote,
+                    onValueChange = { alertNote = it },
+                    label = { Text("Notification note") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { imagePicker.launch("image/*") },
+                        modifier = Modifier.weight(1f),
+                    ) { Text(if (alertImage.isNullOrBlank()) "Pick photo" else "Change photo") }
+                    OutlinedButton(
+                        onClick = { audioPicker.launch("audio/*") },
+                        modifier = Modifier.weight(1f),
+                    ) { Text(if (alertAudio.isNullOrBlank()) "Pick audio" else "Change audio") }
+                }
+                alertImage?.let {
+                    Text("Photo: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                alertAudio?.let {
+                    Text("Audio: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    FilterChip(
+                        selected = alertAudioLoop,
+                        onClick = { alertAudioLoop = !alertAudioLoop },
+                        label = { Text("Loop audio") },
+                    )
+                    TextButton(onClick = { alertImage = null }) { Text("Remove photo") }
+                    TextButton(onClick = { alertAudio = null }) { Text("Remove audio") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) {
@@ -1110,7 +1187,8 @@ private fun ReminderSpec.alertForEdit(): ReminderAlert {
 
 private fun ReminderSpec.withAlert(alert: ReminderAlert): ReminderSpec {
     val normalized = alert.takeIf {
-        !it.note.isNullOrBlank() ||
+        it.style == "fullscreen" ||
+            !it.note.isNullOrBlank() ||
             !it.image.isNullOrBlank() ||
             !it.audio.isNullOrBlank() ||
             it.allowOverlay ||

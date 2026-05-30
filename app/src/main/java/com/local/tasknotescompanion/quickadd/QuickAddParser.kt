@@ -1,5 +1,6 @@
 package com.local.tasknotescompanion.quickadd
 
+import com.local.tasknotescompanion.domain.ReminderAlert
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
@@ -23,6 +24,7 @@ data class QuickAddDraft(
     val contexts: List<String> = emptyList(),
     val priority: String? = null,
     val timeEstimateMinutes: Int? = null,
+    val alert: ReminderAlert? = null,
     val tokens: List<QuickAddToken> = emptyList(),
 )
 

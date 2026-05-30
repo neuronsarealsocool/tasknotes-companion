@@ -4,6 +4,8 @@ import com.local.tasknotescompanion.data.TaskDao
 import com.local.tasknotescompanion.data.TaskMappingStore
 import com.local.tasknotescompanion.data.toEntity
 import com.local.tasknotescompanion.data.toRecord
+import com.local.tasknotescompanion.domain.ReminderAlert
+import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.TaskRecord
 import com.local.tasknotescompanion.domain.TaskFrontmatter
 import com.local.tasknotescompanion.quickadd.QuickAddDraft
@@ -58,11 +60,11 @@ class VaultRepository(
         parsed
     }
 
-    suspend fun create(title: String, reminders: List<com.local.tasknotescompanion.domain.ReminderSpec> = emptyList()): TaskRecord {
+    suspend fun create(title: String, reminders: List<ReminderSpec> = emptyList()): TaskRecord {
         return create(QuickAddDraft(rawText = title, title = title), reminders)
     }
 
-    suspend fun create(draft: QuickAddDraft, reminders: List<com.local.tasknotescompanion.domain.ReminderSpec> = emptyList()): TaskRecord = withContext(Dispatchers.IO) {
+    suspend fun create(draft: QuickAddDraft, reminders: List<ReminderSpec> = emptyList()): TaskRecord = withContext(Dispatchers.IO) {
         val root = File(mappingStore.vaultPath())
         val config = mappingStore.load()
         val title = draft.title.trim().ifBlank { "New task" }
@@ -87,7 +89,7 @@ class VaultRepository(
             tags = tags,
             projects = draft.projects.distinct(),
             contexts = draft.contexts.distinct(),
-            reminders = reminders,
+            reminders = reminders.map { it.withDefaultAlert(draft.alert ?: ReminderAlert(style = "fullscreen")) },
             recurrence = null,
             completedDate = null,
             modifiedAt = System.currentTimeMillis(),
@@ -108,6 +110,13 @@ class VaultRepository(
         val parsed = parser.parse(file, root, config) ?: task
         dao.upsert(parsed.toEntity())
         parsed
+    }
+
+    private fun ReminderSpec.withDefaultAlert(alert: ReminderAlert): ReminderSpec {
+        return when (this) {
+            is ReminderSpec.Absolute -> copy(alert = this.alert ?: alert)
+            is ReminderSpec.Relative -> copy(alert = this.alert ?: alert)
+        }
     }
 
     suspend fun complete(task: TaskRecord) = withContext(Dispatchers.IO) {

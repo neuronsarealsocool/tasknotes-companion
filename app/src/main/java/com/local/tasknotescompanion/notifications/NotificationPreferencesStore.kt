@@ -12,6 +12,7 @@ class NotificationPreferencesStore(context: Context) {
 
     fun load(): NotificationPreferences {
         migrateLegacyDateOnlyAnchorTime()
+        migrateDueAtDefaultReminder()
         migrateAfterScheduledDefaultReminders()
         return NotificationPreferences(
             remindersEnabled = prefs.getBoolean("remindersEnabled", true),
@@ -45,6 +46,23 @@ class NotificationPreferencesStore(context: Context) {
             prefs.edit().putString("dateOnlyAnchorTime", DEFAULT_DATE_ONLY_ANCHOR).apply()
         }
         prefs.edit().putBoolean("dateOnlyAnchorTimeMigratedToTaskNotesDefault", true).apply()
+    }
+
+    private fun migrateDueAtDefaultReminder() {
+        if (prefs.getBoolean("dueAtDefaultReminderAdded", false)) return
+        val existing = prefs.getString("defaultReminders", null)
+            ?.lines()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.toMutableList()
+            ?: DEFAULT_REMINDERS.lines().filter { it.isNotBlank() }.toMutableList()
+        if (existing.none { it.equals(DUE_AT_DEFAULT_REMINDER, ignoreCase = true) }) {
+            existing += DUE_AT_DEFAULT_REMINDER
+        }
+        prefs.edit()
+            .putString("defaultReminders", existing.joinToString("\n"))
+            .putBoolean("dueAtDefaultReminderAdded", true)
+            .apply()
     }
 
     private fun migrateAfterScheduledDefaultReminders() {
@@ -88,7 +106,8 @@ class NotificationPreferencesStore(context: Context) {
 
     private companion object {
         const val DEFAULT_DATE_ONLY_ANCHOR = "10:15"
+        const val DUE_AT_DEFAULT_REMINDER = "PT0M|due"
         const val AFTER_SCHEDULED_DEFAULT_REMINDERS = "PT5M|scheduled\nPT10M|scheduled\nPT15M|scheduled\nPT30M|scheduled\nPT1H|scheduled\nPT2H|scheduled"
-        const val DEFAULT_REMINDERS = "-PT15M|due\n$AFTER_SCHEDULED_DEFAULT_REMINDERS"
+        const val DEFAULT_REMINDERS = "-PT15M|due\n$DUE_AT_DEFAULT_REMINDER\n$AFTER_SCHEDULED_DEFAULT_REMINDERS"
     }
 }
