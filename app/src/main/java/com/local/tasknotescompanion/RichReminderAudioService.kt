@@ -126,7 +126,17 @@ class RichReminderAudioService : Service() {
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(dp(40), dp(96), dp(40), dp(28))
+                        setPadding(dp(28), dp(56), dp(28), dp(28))
+
+                        addView(TextView(context).apply {
+                            text = title
+                            textSize = 32f
+                            setTextColor(0xFF111111.toInt())
+                            gravity = Gravity.CENTER
+                        }, LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).apply { setMargins(0, 0, 0, dp(24)) })
 
                         imagePath?.let { path ->
                             val file = File(path)
@@ -139,37 +149,25 @@ class RichReminderAudioService : Service() {
                                     setImageBitmap(bitmap)
                                     adjustViewBounds = true
                                     scaleType = ImageView.ScaleType.FIT_CENTER
-                                    maxHeight = dp(300)
+                                    maxHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
                                 }, LinearLayout.LayoutParams(
                                     LinearLayout.LayoutParams.MATCH_PARENT,
                                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, 0, 0, dp(32)) })
+                                ).apply { setMargins(0, 0, 0, dp(24)) })
                             }
                         }
 
-                        addView(LinearLayout(context).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(dp(40), dp(30), dp(40), dp(30))
-                            setBackgroundColor(0xEE20283B.toInt())
+                        if (note.isNotBlank()) {
                             addView(TextView(context).apply {
-                                text = title
-                                textSize = 30f
-                                setTextColor(0xFFFFFFFF.toInt())
-                            })
-                            if (note.isNotBlank()) {
-                                addView(TextView(context).apply {
-                                    text = note
-                                    textSize = 20f
-                                    setTextColor(0xFFDDE3EF.toInt())
-                                }, LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, dp(12), 0, 0) })
-                            }
-                        }, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { setMargins(-dp(40), 0, -dp(40), 0) })
+                                text = note
+                                textSize = 22f
+                                setTextColor(0xFF111111.toInt())
+                                gravity = Gravity.CENTER
+                            }, LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                            ))
+                        }
                     })
                 }, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,

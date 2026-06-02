@@ -61,7 +61,17 @@ class RichReminderActivity : ComponentActivity() {
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(dp(40), dp(120), dp(40), dp(28))
+                        setPadding(dp(28), dp(56), dp(28), dp(28))
+
+                        addView(TextView(context).apply {
+                            text = title
+                            textSize = 32f
+                            setTextColor(0xFF111111.toInt())
+                            gravity = Gravity.CENTER
+                        }, LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).apply { setMargins(0, 0, 0, dp(24)) })
 
                         imagePath?.let { path ->
                             val file = File(path)
@@ -74,52 +84,25 @@ class RichReminderActivity : ComponentActivity() {
                                     setImageBitmap(bitmap)
                                     adjustViewBounds = true
                                     scaleType = ImageView.ScaleType.FIT_CENTER
-                                    maxHeight = dp(260)
+                                    maxHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
                                 }, LinearLayout.LayoutParams(
                                     LinearLayout.LayoutParams.MATCH_PARENT,
                                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, 0, 0, dp(36)) })
+                                ).apply { setMargins(0, 0, 0, dp(24)) })
                             }
                         }
 
-                        addView(LinearLayout(context).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(dp(40), dp(28), dp(40), dp(28))
-                            setBackgroundColor(0xEE20283B.toInt())
-
+                        if (note.isNotBlank()) {
                             addView(TextView(context).apply {
-                                text = title
-                                textSize = 30f
-                                setTextColor(0xFFFFFFFF.toInt())
+                                text = note
+                                textSize = 22f
+                                setTextColor(0xFF111111.toInt())
+                                gravity = Gravity.CENTER
                             }, LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                 LinearLayout.LayoutParams.WRAP_CONTENT,
                             ))
-
-                            if (note.isNotBlank()) {
-                                addView(TextView(context).apply {
-                                    text = note
-                                    textSize = 20f
-                                    setTextColor(0xFFDDE3EF.toInt())
-                                }, LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, dp(12), 0, dp(18)) })
-                            }
-
-                            addView(actionButton("DISMISS") { dismiss() }.apply {
-                                backgroundTintList = ColorStateList.valueOf(0xFFE9EAE6.toInt())
-                                setTextColor(0xFF111111.toInt())
-                            }, LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                dp(58),
-                            ).apply { setMargins(0, dp(6), 0, dp(4)) })
-                        }, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply {
-                            setMargins(-dp(40), 0, -dp(40), 0)
-                        })
+                        }
                     })
                 }, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
