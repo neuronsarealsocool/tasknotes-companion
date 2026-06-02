@@ -224,7 +224,8 @@ class ReminderScheduler(
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val fullScreen = if (row.hasRichAlert()) {
+        val hasRichAlert = row.hasRichAlert()
+        val fullScreen = if (hasRichAlert) {
             PendingIntent.getActivity(
                 context,
                 "rich-${row.id}".hashCode(),
@@ -237,23 +238,30 @@ class ReminderScheduler(
         } else {
             null
         }
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val channelId = if (hasRichAlert) RICH_STATUS_CHANNEL_ID else CHANNEL_ID
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(row.taskTitle)
             .setContentText(row.description ?: row.kind.defaultNotificationText())
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setPriority(if (hasRichAlert) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
+            .setCategory(if (hasRichAlert) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_ALARM)
+            .setDefaults(if (hasRichAlert) 0 else NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(openTask)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(hasRichAlert)
+            .setSilent(hasRichAlert)
             .addAction(R.drawable.ic_launcher_foreground, "Complete", completeIntent)
             .addAction(R.drawable.ic_launcher_foreground, "10m", snooze10)
             .addAction(R.drawable.ic_launcher_foreground, "30m", snooze30)
             .addAction(R.drawable.ic_launcher_foreground, "1h", snooze1h)
             .addAction(R.drawable.ic_launcher_foreground, "Tomorrow", tomorrow)
             .apply {
-                if (fullScreen != null) setFullScreenIntent(fullScreen, true)
+                if (hasRichAlert) {
+                    setTimeoutAfter(RICH_STATUS_TIMEOUT_MS)
+                } else if (fullScreen != null) {
+                    setFullScreenIntent(fullScreen, true)
+                }
             }
             .build()
         NotificationManagerCompat.from(context).notify(row.id.hashCode(), notification)
@@ -411,6 +419,7 @@ class ReminderScheduler(
 
     companion object {
         const val CHANNEL_ID = "task_reminders_alarm_v2"
+        const val RICH_STATUS_CHANNEL_ID = "task_rich_reminders_status_v1"
         const val RICH_CHANNEL_ID = "task_rich_reminders_alarm_v1"
         const val SERVICE_CHANNEL_ID = "task_reminders_service_v1"
         const val ACTION_SHOW = "com.local.tasknotescompanion.SHOW_REMINDER"
@@ -439,6 +448,7 @@ class ReminderScheduler(
         const val EXTRA_ALERT_AUDIO_UNTIL = "alertAudioUntil"
         const val EXTRA_ALERT_ALLOW_OVERLAY = "alertAllowOverlay"
         const val TOMORROW_MINUTES = -1L
+        private const val RICH_STATUS_TIMEOUT_MS = 5_000L
         private const val DAILY_SUMMARY_ID = 710100
         private const val TAG = "TaskNotesReminder"
     }

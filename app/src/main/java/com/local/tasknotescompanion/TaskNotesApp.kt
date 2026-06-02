@@ -68,6 +68,16 @@ class TaskNotesApp : Application() {
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             enableVibration(true)
         }
+        val richStatusChannel = NotificationChannel(
+            ReminderScheduler.RICH_STATUS_CHANNEL_ID,
+            "Rich reminder status",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Short-lived status notification shown while a rich reminder overlay is active"
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+            setSound(null, null)
+            enableVibration(false)
+        }
         val serviceChannel = NotificationChannel(
             ReminderScheduler.SERVICE_CHANNEL_ID,
             "Reminder playback",
@@ -79,7 +89,7 @@ class TaskNotesApp : Application() {
             enableVibration(false)
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannels(listOf(channel, richChannel, serviceChannel))
+        manager.createNotificationChannels(listOf(channel, richChannel, richStatusChannel, serviceChannel))
     }
 
     private fun scheduleBackgroundScan() {
