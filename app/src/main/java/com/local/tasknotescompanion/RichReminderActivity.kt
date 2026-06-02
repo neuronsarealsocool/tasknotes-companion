@@ -9,9 +9,9 @@ import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
@@ -57,53 +57,54 @@ class RichReminderActivity : ComponentActivity() {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(0xFFFCFBF8.toInt())
 
-                addView(ScrollView(context).apply {
-                    addView(LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(dp(28), dp(32), dp(28), dp(20))
+                addView(FrameLayout(context).apply {
+                    setBackgroundColor(0xFFFCFBF8.toInt())
 
-                        addView(TextView(context).apply {
-                            text = title
-                            textSize = 24f
-                            setTextColor(0xFF111111.toInt())
-                            gravity = Gravity.CENTER
-                        }, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { setMargins(0, 0, 0, dp(16)) })
-
-                        imagePath?.let { path ->
-                            val file = File(path)
-                            Log.i(TAG, "Loading rich reminder image ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
-                            val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
-                                .onFailure { Log.e(TAG, "Failed to decode rich reminder image: ${file.absolutePath}", it) }
-                                .getOrNull()
-                            if (bitmap != null) {
-                                val imageHeight = (resources.displayMetrics.heightPixels * 0.38f).toInt()
-                                addView(ImageView(context).apply {
-                                    setImageBitmap(bitmap)
-                                    scaleType = ImageView.ScaleType.FIT_CENTER
-                                }, LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    imageHeight,
-                                ).apply { setMargins(0, 0, 0, dp(16)) })
-                            }
-                        }
-
-                        if (note.isNotBlank()) {
-                            addView(TextView(context).apply {
-                                text = note
-                                textSize = 18f
-                                setTextColor(0xFF111111.toInt())
-                                gravity = Gravity.CENTER
-                                setLineSpacing(dp(2).toFloat(), 1.0f)
-                            }, LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                    imagePath?.let { path ->
+                        val file = File(path)
+                        Log.i(TAG, "Loading rich reminder image ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
+                        val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
+                            .onFailure { Log.e(TAG, "Failed to decode rich reminder image: ${file.absolutePath}", it) }
+                            .getOrNull()
+                        if (bitmap != null) {
+                            addView(ImageView(context).apply {
+                                setImageBitmap(bitmap)
+                                scaleType = ImageView.ScaleType.FIT_CENTER
+                            }, FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT,
                             ))
                         }
-                    })
+                    }
+
+                    addView(TextView(context).apply {
+                        text = title
+                        textSize = 28f
+                        setTextColor(0xFF111111.toInt())
+                        gravity = Gravity.CENTER
+                        setPadding(dp(16), dp(10), dp(16), dp(10))
+                        setBackgroundColor(0xDDFCFCF8.toInt())
+                    }, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+                    ).apply { setMargins(dp(16), dp(24), dp(16), 0) })
+
+                    if (note.isNotBlank()) {
+                        addView(TextView(context).apply {
+                            text = note
+                            textSize = 20f
+                            setTextColor(0xFF111111.toInt())
+                            gravity = Gravity.CENTER
+                            setLineSpacing(dp(2).toFloat(), 1.0f)
+                            setPadding(dp(16), dp(10), dp(16), dp(10))
+                            setBackgroundColor(0xDDFCFCF8.toInt())
+                        }, FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
+                        ).apply { setMargins(dp(16), 0, dp(16), dp(20)) })
+                    }
                 }, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     0,
