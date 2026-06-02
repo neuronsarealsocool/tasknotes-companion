@@ -47,7 +47,7 @@ class ReminderScheduler(
         val prefs = preferencesStore.load()
         val rows = resolver.resolve(task, prefs)
             .mapNotNull { it.nextRepeatOccurrenceIfNeeded() }
-            .filter { it.isFuture() }
+            .filter { it.isSchedulable() }
             .map { it.toEntity("task") }
         scheduledDao.insertAll(rows)
         rows.forEach(::scheduleRow)
@@ -103,6 +103,9 @@ class ReminderScheduler(
         scheduledDao.deleteById(scheduleId)
         Log.i(TAG, "Showing notification $scheduleId for ${row.taskId}")
         showTaskNotification(row)
+        if (row.hasRichAlert()) {
+            showRichReminder(row)
+        }
     }
 
     fun showAlarmNotification(intent: Intent) {
@@ -279,10 +282,6 @@ class ReminderScheduler(
     }
 
     private fun scheduleRow(row: ScheduledNotificationEntity) {
-        if (row.hasRichAlert()) {
-            scheduleRichActivityRow(row)
-            return
-        }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             row.id.hashCode(),
@@ -360,7 +359,7 @@ class ReminderScheduler(
             description = description,
             repeatEveryMillis = repeatEvery?.toMillis(),
             repeatUntilCompleted = repeatUntilCompleted,
-            alertStyle = alert?.style,
+            alertStyle = alert?.style ?: "fullscreen",
             alertNote = alert?.note,
             alertImage = alert?.image,
             alertAudio = alert?.audio,
@@ -402,7 +401,7 @@ class ReminderScheduler(
     }
 
     private fun ResolvedReminder.nextRepeatOccurrenceIfNeeded(now: LocalDateTime = LocalDateTime.now()): ResolvedReminder? {
-        if (isFuture(now)) return this
+        if (isSchedulable(now)) return this
         val repeat = repeatEvery ?: return this
         if (!repeatUntilCompleted || repeat.isZero || repeat.isNegative) return this
         var next = triggerAt.plus(repeat)

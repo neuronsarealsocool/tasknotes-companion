@@ -73,7 +73,7 @@ class ReminderResolverTest {
             .single { it.id == "scheduled_plus_14_days" }
 
         assertEquals(LocalDateTime.parse("2026-05-28T15:30:00"), resolved.triggerAt)
-        assertTrue(resolved.isFuture(LocalDateTime.parse("2026-05-16T09:00:00")))
+        assertTrue(resolved.isSchedulable(LocalDateTime.parse("2026-05-16T09:00:00")))
     }
 
     @Test
@@ -90,7 +90,7 @@ class ReminderResolverTest {
             .single { it.id == "scheduled_plus_10_minutes" }
 
         assertEquals(LocalDateTime.parse("2026-05-26T16:10:00"), resolved.triggerAt)
-        assertTrue(resolved.isFuture(LocalDateTime.parse("2026-05-26T16:05:00")))
+        assertTrue(resolved.isSchedulable(LocalDateTime.parse("2026-05-26T16:05:00")))
     }
 
     @Test
@@ -134,6 +134,22 @@ class ReminderResolverTest {
 
         assertEquals(Duration.ofMinutes(10), resolved.repeatEvery)
         assertTrue(resolved.repeatUntilCompleted)
+    }
+
+    @Test
+    fun treatsJustPassedZeroMinuteReminderAsSchedulable() {
+        val task = task(
+            due = LocalDate.parse("2026-05-27"),
+            dueTime = LocalTime.parse("10:00"),
+            reminders = listOf(
+                ReminderSpec.Relative("due_at_time", ReminderAnchor.DUE, Duration.ZERO),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = false))
+            .single { it.id == "due_at_time" }
+
+        assertTrue(resolved.isSchedulable(LocalDateTime.parse("2026-05-27T10:00:05")))
     }
 
     @Test

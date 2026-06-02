@@ -12,5 +12,12 @@
                 <action android:name="com.local.tasknotescompanion.TEST_RICH_REMINDER" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".ReminderResyncDebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.local.tasknotescompanion.DEBUG_RESYNC_REMINDERS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

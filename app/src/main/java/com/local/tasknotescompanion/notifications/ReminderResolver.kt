@@ -72,4 +72,8 @@ class ReminderResolver {
     }
 }
 
-fun ResolvedReminder.isFuture(now: LocalDateTime = LocalDateTime.now()): Boolean = triggerAt.isAfter(now)
+fun ResolvedReminder.isSchedulable(now: LocalDateTime = LocalDateTime.now()): Boolean {
+    return !triggerAt.isBefore(now.minusSeconds(ImmediateReminderGraceSeconds))
+}
+
+private const val ImmediateReminderGraceSeconds = 10L
