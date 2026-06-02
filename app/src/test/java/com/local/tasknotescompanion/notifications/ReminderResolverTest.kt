@@ -60,6 +60,40 @@ class ReminderResolverTest {
     }
 
     @Test
+    fun skipsSyntheticScheduledNotificationWhenExplicitReminderFiresAtScheduledTime() {
+        val task = task(
+            scheduled = LocalDate.parse("2026-05-14"),
+            scheduledTime = LocalTime.parse("15:30"),
+            reminders = listOf(
+                ReminderSpec.Relative("scheduled_at_time", ReminderAnchor.SCHEDULED, Duration.ZERO),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = false))
+
+        assertEquals(1, resolved.size)
+        assertEquals("scheduled_at_time", resolved.single().id)
+        assertEquals("reminder", resolved.single().source)
+    }
+
+    @Test
+    fun skipsSyntheticDueNotificationWhenExplicitReminderFiresAtDueTime() {
+        val task = task(
+            due = LocalDate.parse("2026-05-14"),
+            dueTime = LocalTime.parse("15:30"),
+            reminders = listOf(
+                ReminderSpec.Relative("due_at_time", ReminderAnchor.DUE, Duration.ZERO),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = true))
+
+        assertEquals(1, resolved.size)
+        assertEquals("due_at_time", resolved.single().id)
+        assertEquals("reminder", resolved.single().source)
+    }
+
+    @Test
     fun keepsAfterScheduledReminderWhenAnchorHasPassedButReminderIsFuture() {
         val task = task(
             scheduled = LocalDate.parse("2026-05-14"),

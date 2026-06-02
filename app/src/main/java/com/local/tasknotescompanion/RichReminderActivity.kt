@@ -61,17 +61,17 @@ class RichReminderActivity : ComponentActivity() {
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(dp(28), dp(56), dp(28), dp(28))
+                        setPadding(dp(28), dp(32), dp(28), dp(20))
 
                         addView(TextView(context).apply {
                             text = title
-                            textSize = 32f
+                            textSize = 24f
                             setTextColor(0xFF111111.toInt())
                             gravity = Gravity.CENTER
                         }, LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { setMargins(0, 0, 0, dp(24)) })
+                        ).apply { setMargins(0, 0, 0, dp(16)) })
 
                         imagePath?.let { path ->
                             val file = File(path)
@@ -80,24 +80,24 @@ class RichReminderActivity : ComponentActivity() {
                                 .onFailure { Log.e(TAG, "Failed to decode rich reminder image: ${file.absolutePath}", it) }
                                 .getOrNull()
                             if (bitmap != null) {
+                                val imageHeight = (resources.displayMetrics.heightPixels * 0.38f).toInt()
                                 addView(ImageView(context).apply {
                                     setImageBitmap(bitmap)
-                                    adjustViewBounds = true
                                     scaleType = ImageView.ScaleType.FIT_CENTER
-                                    maxHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
                                 }, LinearLayout.LayoutParams(
                                     LinearLayout.LayoutParams.MATCH_PARENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, 0, 0, dp(24)) })
+                                    imageHeight,
+                                ).apply { setMargins(0, 0, 0, dp(16)) })
                             }
                         }
 
                         if (note.isNotBlank()) {
                             addView(TextView(context).apply {
                                 text = note
-                                textSize = 22f
+                                textSize = 18f
                                 setTextColor(0xFF111111.toInt())
                                 gravity = Gravity.CENTER
+                                setLineSpacing(dp(2).toFloat(), 1.0f)
                             }, LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -112,7 +112,7 @@ class RichReminderActivity : ComponentActivity() {
 
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(40), dp(24), dp(40), dp(40))
+                    setPadding(dp(40), dp(12), dp(40), dp(24))
 
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -121,7 +121,7 @@ class RichReminderActivity : ComponentActivity() {
                     }, LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).apply { setMargins(0, 32, 0, 20) })
+                    ).apply { setMargins(0, dp(16), 0, dp(8)) })
 
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -137,8 +137,8 @@ class RichReminderActivity : ComponentActivity() {
                         setTextColor(0xFFFFFFFF.toInt())
                     }, LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(64),
-                    ).apply { setMargins(dp(8), dp(24), dp(8), 0) })
+                        dp(56),
+                    ).apply { setMargins(dp(8), dp(12), dp(8), 0) })
                 }, ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -151,7 +151,7 @@ class RichReminderActivity : ComponentActivity() {
         return Button(this).apply {
             text = label
             textSize = 18f
-            minHeight = dp(56)
+            minHeight = dp(48)
             setOnClickListener { action() }
         }
     }

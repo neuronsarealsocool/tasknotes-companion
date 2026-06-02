@@ -126,17 +126,17 @@ class RichReminderAudioService : Service() {
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(dp(28), dp(56), dp(28), dp(28))
+                        setPadding(dp(28), dp(32), dp(28), dp(20))
 
                         addView(TextView(context).apply {
                             text = title
-                            textSize = 32f
+                            textSize = 24f
                             setTextColor(0xFF111111.toInt())
                             gravity = Gravity.CENTER
                         }, LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { setMargins(0, 0, 0, dp(24)) })
+                        ).apply { setMargins(0, 0, 0, dp(16)) })
 
                         imagePath?.let { path ->
                             val file = File(path)
@@ -145,24 +145,24 @@ class RichReminderAudioService : Service() {
                                 .onFailure { Log.e(TAG, "Failed to decode overlay image: ${file.absolutePath}", it) }
                                 .getOrNull()
                             if (bitmap != null) {
+                                val imageHeight = (resources.displayMetrics.heightPixels * 0.38f).toInt()
                                 addView(ImageView(context).apply {
                                     setImageBitmap(bitmap)
-                                    adjustViewBounds = true
                                     scaleType = ImageView.ScaleType.FIT_CENTER
-                                    maxHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
                                 }, LinearLayout.LayoutParams(
                                     LinearLayout.LayoutParams.MATCH_PARENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                ).apply { setMargins(0, 0, 0, dp(24)) })
+                                    imageHeight,
+                                ).apply { setMargins(0, 0, 0, dp(16)) })
                             }
                         }
 
                         if (note.isNotBlank()) {
                             addView(TextView(context).apply {
                                 text = note
-                                textSize = 22f
+                                textSize = 18f
                                 setTextColor(0xFF111111.toInt())
                                 gravity = Gravity.CENTER
+                                setLineSpacing(dp(2).toFloat(), 1.0f)
                             }, LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -177,7 +177,7 @@ class RichReminderAudioService : Service() {
 
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(40), dp(24), dp(40), dp(40))
+                    setPadding(dp(40), dp(12), dp(40), dp(24))
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.HORIZONTAL
                         addView(actionButton("Edit") { editTaskFromOverlay() }, weightedButtonParams())
@@ -185,15 +185,15 @@ class RichReminderAudioService : Service() {
                     })
                     addView(actionButton("Complete") { completeFromOverlay() }, LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(58),
-                    ).apply { setMargins(dp(8), dp(8), dp(8), dp(8)) })
+                        dp(50),
+                    ).apply { setMargins(dp(8), dp(6), dp(8), dp(6)) })
                     addView(actionButton("Dismiss") { dismissOverlayReminder() }.apply {
                         backgroundTintList = ColorStateList.valueOf(0xFF2E7655.toInt())
                         setTextColor(0xFFFFFFFF.toInt())
                     }, LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(64),
-                    ).apply { setMargins(dp(8), dp(20), dp(8), 0) })
+                        dp(56),
+                    ).apply { setMargins(dp(8), dp(12), dp(8), 0) })
                 })
             }
             val params = WindowManager.LayoutParams(
@@ -344,7 +344,7 @@ class RichReminderAudioService : Service() {
         return Button(this).apply {
             text = label
             textSize = 18f
-            minHeight = dp(56)
+            minHeight = dp(48)
             setOnClickListener { action() }
         }
     }

@@ -12,29 +12,40 @@ class ReminderResolver {
     fun resolve(task: TaskRecord, preferences: NotificationPreferences): List<ResolvedReminder> {
         if (!preferences.remindersEnabled || task.isDone) return emptyList()
         val explicit = task.reminders.mapNotNull { resolveReminder(task, it, preferences) }
+        val explicitTriggerTimes = explicit.map { it.triggerAt }.toSet()
         val dueReminder = if (preferences.overdueReminderEnabled && task.due != null) {
-            ResolvedReminder(
-                id = "due_${task.id}",
-                taskId = task.id,
-                taskPath = task.path,
-            taskTitle = task.title,
-            triggerAt = task.due.atTime(task.dueTime ?: preferences.dateOnlyAnchorTime),
-            description = "Due today",
-            source = "due",
-        )
+            val dueAt = task.due.atTime(task.dueTime ?: preferences.dateOnlyAnchorTime)
+            if (dueAt in explicitTriggerTimes) {
+                null
+            } else {
+                ResolvedReminder(
+                    id = "due_${task.id}",
+                    taskId = task.id,
+                    taskPath = task.path,
+                    taskTitle = task.title,
+                    triggerAt = dueAt,
+                    description = "Due today",
+                    source = "due",
+                )
+            }
         } else {
             null
         }
         val scheduledReminder = task.scheduled?.let {
-            ResolvedReminder(
-                id = "scheduled_${task.id}",
-                taskId = task.id,
-                taskPath = task.path,
-            taskTitle = task.title,
-            triggerAt = it.atTime(task.scheduledTime ?: preferences.dateOnlyAnchorTime),
-            description = "Scheduled now",
-            source = "scheduled",
-        )
+            val scheduledAt = it.atTime(task.scheduledTime ?: preferences.dateOnlyAnchorTime)
+            if (scheduledAt in explicitTriggerTimes) {
+                null
+            } else {
+                ResolvedReminder(
+                    id = "scheduled_${task.id}",
+                    taskId = task.id,
+                    taskPath = task.path,
+                    taskTitle = task.title,
+                    triggerAt = scheduledAt,
+                    description = "Scheduled now",
+                    source = "scheduled",
+                )
+            }
         }
         return (explicit + listOfNotNull(dueReminder, scheduledReminder))
             .distinctBy { it.id }
