@@ -2,8 +2,11 @@ package com.local.tasknotescompanion
 
 import android.app.Activity
 import android.content.res.ColorStateList
+import android.graphics.ImageDecoder
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -13,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.local.tasknotescompanion.notifications.ReminderReceiver
@@ -52,6 +56,7 @@ class RichReminderActivity : ComponentActivity() {
             ?: intent.getStringExtra(ReminderScheduler.EXTRA_DESCRIPTION)
             ?: ""
         val imagePath = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_IMAGE)
+        val videoPath = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_VIDEO)
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -60,16 +65,38 @@ class RichReminderActivity : ComponentActivity() {
                 addView(FrameLayout(context).apply {
                     setBackgroundColor(0xFFFCFBF8.toInt())
 
-                    imagePath?.let { path ->
+                    if (!videoPath.isNullOrBlank()) {
+                        val file = File(videoPath)
+                        Log.i(TAG, "Loading rich reminder video ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
+                        addView(VideoView(context).apply {
+                            setVideoURI(Uri.fromFile(file))
+                            setOnPreparedListener { player ->
+                                player.isLooping = true
+                                start()
+                            }
+                            setOnCompletionListener { start() }
+                        }, FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        ))
+                    } else {
+                        imagePath?.let { path ->
                         val file = File(path)
                         Log.i(TAG, "Loading rich reminder image ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
-                        val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
-                            .onFailure { Log.e(TAG, "Failed to decode rich reminder image: ${file.absolutePath}", it) }
-                            .getOrNull()
-                        if (bitmap != null) {
                             addView(ImageView(context).apply {
-                                setImageBitmap(bitmap)
                                 scaleType = ImageView.ScaleType.FIT_CENTER
+                                if (file.extension.equals("gif", ignoreCase = true)) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                        setImageDrawable(ImageDecoder.decodeDrawable(ImageDecoder.createSource(file)))
+                                    } else {
+                                        setImageURI(Uri.fromFile(file))
+                                    }
+                                } else {
+                                    val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
+                                        .onFailure { Log.e(TAG, "Failed to decode rich reminder image: ${file.absolutePath}", it) }
+                                        .getOrNull()
+                                    if (bitmap != null) setImageBitmap(bitmap)
+                                }
                             }, FrameLayout.LayoutParams(
                                 FrameLayout.LayoutParams.MATCH_PARENT,
                                 FrameLayout.LayoutParams.MATCH_PARENT,

@@ -297,6 +297,7 @@ class TaskNoteParserTest {
                   style: fullscreen
                   note: Soy milk preferably
                   image: TaskNotes Companion/Media/milk.jpg
+                  video: TaskNotes Companion/Media/milk.mp4
                   audio: TaskNotes Companion/Media/hangouts.mp3
                   audioLoop: true
                   audioUntil: dismiss
@@ -312,9 +313,11 @@ class TaskNoteParserTest {
 
         assertEquals("Soy milk preferably", alert.note)
         assertEquals("TaskNotes Companion/Media/milk.jpg", alert.image)
+        assertEquals("TaskNotes Companion/Media/milk.mp4", alert.video)
         assertEquals("TaskNotes Companion/Media/hangouts.mp3", alert.audio)
         assertTrue(alert.allowOverlay)
         assertTrue(rendered.contains("futureField: kept"))
+        assertTrue(rendered.contains("video: TaskNotes Companion/Media/milk.mp4"))
         assertTrue(rendered.contains("audioUntil: dismiss"))
     }
 

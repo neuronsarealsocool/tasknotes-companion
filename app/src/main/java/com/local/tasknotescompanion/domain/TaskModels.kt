@@ -70,6 +70,7 @@ data class ReminderAlert(
     val style: String = "fullscreen",
     val note: String? = null,
     val image: String? = null,
+    val video: String? = null,
     val audio: String? = null,
     val audioLoop: Boolean = true,
     val audioUntil: String = "dismiss",

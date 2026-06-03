@@ -108,6 +108,7 @@ private fun ReminderAlert.toYamlMap(): Map<String, Any?> {
     base["style"] = style
     note?.let { base["note"] = it } ?: base.remove("note")
     image?.let { base["image"] = it } ?: base.remove("image")
+    video?.let { base["video"] = it } ?: base.remove("video")
     audio?.let { base["audio"] = it } ?: base.remove("audio")
     base["audioLoop"] = audioLoop
     base["audioUntil"] = audioUntil
@@ -181,6 +182,7 @@ private fun parseAlert(value: Any?): ReminderAlert? {
         style = raw["style"]?.toString() ?: "fullscreen",
         note = raw["note"]?.toString(),
         image = raw["image"]?.toString(),
+        video = raw["video"]?.toString(),
         audio = raw["audio"]?.toString(),
         audioLoop = raw["audioLoop"]?.toString()?.toBooleanStrictOrNull() ?: true,
         audioUntil = raw["audioUntil"]?.toString() ?: "dismiss",

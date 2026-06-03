@@ -4,9 +4,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.ImageDecoder
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -19,6 +21,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.VideoView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.local.tasknotescompanion.notifications.ReminderScheduler
@@ -118,6 +121,7 @@ class RichReminderAudioService : Service() {
                 ?: intent.getStringExtra(ReminderScheduler.EXTRA_DESCRIPTION)
                 ?: ""
             val imagePath = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_IMAGE)
+            val videoPath = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_VIDEO)
             val view = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(0xFFFCFBF8.toInt())
@@ -125,16 +129,38 @@ class RichReminderAudioService : Service() {
                 addView(FrameLayout(context).apply {
                     setBackgroundColor(0xFFFCFBF8.toInt())
 
-                    imagePath?.let { path ->
+                    if (!videoPath.isNullOrBlank()) {
+                        val file = File(videoPath)
+                        Log.i(TAG, "Loading overlay video ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
+                        addView(VideoView(context).apply {
+                            setVideoURI(Uri.fromFile(file))
+                            setOnPreparedListener { player ->
+                                player.isLooping = true
+                                start()
+                            }
+                            setOnCompletionListener { start() }
+                        }, FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        ))
+                    } else {
+                        imagePath?.let { path ->
                         val file = File(path)
                         Log.i(TAG, "Loading overlay image ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
-                        val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
-                            .onFailure { Log.e(TAG, "Failed to decode overlay image: ${file.absolutePath}", it) }
-                            .getOrNull()
-                        if (bitmap != null) {
                             addView(ImageView(context).apply {
-                                setImageBitmap(bitmap)
                                 scaleType = ImageView.ScaleType.FIT_CENTER
+                                if (file.extension.equals("gif", ignoreCase = true)) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                        setImageDrawable(ImageDecoder.decodeDrawable(ImageDecoder.createSource(file)))
+                                    } else {
+                                        setImageURI(Uri.fromFile(file))
+                                    }
+                                } else {
+                                    val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }
+                                        .onFailure { Log.e(TAG, "Failed to decode overlay image: ${file.absolutePath}", it) }
+                                        .getOrNull()
+                                    if (bitmap != null) setImageBitmap(bitmap)
+                                }
                             }, FrameLayout.LayoutParams(
                                 FrameLayout.LayoutParams.MATCH_PARENT,
                                 FrameLayout.LayoutParams.MATCH_PARENT,

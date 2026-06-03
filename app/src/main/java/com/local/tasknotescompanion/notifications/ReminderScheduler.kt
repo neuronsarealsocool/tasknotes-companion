@@ -85,6 +85,7 @@ class ReminderScheduler(
             alertStyle = null,
             alertNote = null,
             alertImage = null,
+            alertVideo = null,
             alertAudio = null,
             alertAudioLoop = true,
             alertAudioUntil = null,
@@ -122,6 +123,7 @@ class ReminderScheduler(
         val alertStyle = intent.getStringExtra(EXTRA_ALERT_STYLE)
         val alertNote = intent.getStringExtra(EXTRA_ALERT_NOTE)
         val alertImage = intent.getStringExtra(EXTRA_ALERT_IMAGE)
+        val alertVideo = intent.getStringExtra(EXTRA_ALERT_VIDEO)
         val alertAudio = intent.getStringExtra(EXTRA_ALERT_AUDIO)
         val alertAudioLoop = intent.getBooleanExtra(EXTRA_ALERT_AUDIO_LOOP, true)
         val alertAudioUntil = intent.getStringExtra(EXTRA_ALERT_AUDIO_UNTIL)
@@ -141,6 +143,7 @@ class ReminderScheduler(
             alertStyle = alertStyle,
             alertNote = alertNote,
             alertImage = alertImage,
+            alertVideo = alertVideo,
             alertAudio = alertAudio,
             alertAudioLoop = alertAudioLoop,
             alertAudioUntil = alertAudioUntil,
@@ -180,6 +183,7 @@ class ReminderScheduler(
             alertStyle = intent.getStringExtra(EXTRA_ALERT_STYLE),
             alertNote = intent.getStringExtra(EXTRA_ALERT_NOTE),
             alertImage = intent.getStringExtra(EXTRA_ALERT_IMAGE),
+            alertVideo = intent.getStringExtra(EXTRA_ALERT_VIDEO),
             alertAudio = intent.getStringExtra(EXTRA_ALERT_AUDIO),
             alertAudioLoop = intent.getBooleanExtra(EXTRA_ALERT_AUDIO_LOOP, true),
             alertAudioUntil = intent.getStringExtra(EXTRA_ALERT_AUDIO_UNTIL),
@@ -370,6 +374,7 @@ class ReminderScheduler(
             alertStyle = alert?.style,
             alertNote = alert?.note,
             alertImage = alert?.image,
+            alertVideo = alert?.video,
             alertAudio = alert?.audio,
             alertAudioLoop = alert?.audioLoop ?: true,
             alertAudioUntil = alert?.audioUntil,
@@ -378,7 +383,11 @@ class ReminderScheduler(
     }
 
     private fun ScheduledNotificationEntity.hasRichAlert(): Boolean {
-        return alertStyle == "fullscreen" || !alertNote.isNullOrBlank() || !alertImage.isNullOrBlank() || !alertAudio.isNullOrBlank()
+        return alertStyle == "fullscreen" ||
+            !alertNote.isNullOrBlank() ||
+            !alertImage.isNullOrBlank() ||
+            !alertVideo.isNullOrBlank() ||
+            !alertAudio.isNullOrBlank()
     }
 
     private fun Intent.putReminderExtras(row: ScheduledNotificationEntity): Intent {
@@ -395,6 +404,7 @@ class ReminderScheduler(
             .putExtra(EXTRA_ALERT_STYLE, row.alertStyle)
             .putExtra(EXTRA_ALERT_NOTE, row.alertNote)
             .putExtra(EXTRA_ALERT_IMAGE, resolveVaultPath(row.alertImage))
+            .putExtra(EXTRA_ALERT_VIDEO, resolveVaultPath(row.alertVideo))
             .putExtra(EXTRA_ALERT_AUDIO, resolveVaultPath(row.alertAudio))
             .putExtra(EXTRA_ALERT_AUDIO_LOOP, row.alertAudioLoop)
             .putExtra(EXTRA_ALERT_AUDIO_UNTIL, row.alertAudioUntil)
@@ -443,6 +453,7 @@ class ReminderScheduler(
         const val EXTRA_ALERT_STYLE = "alertStyle"
         const val EXTRA_ALERT_NOTE = "alertNote"
         const val EXTRA_ALERT_IMAGE = "alertImage"
+        const val EXTRA_ALERT_VIDEO = "alertVideo"
         const val EXTRA_ALERT_AUDIO = "alertAudio"
         const val EXTRA_ALERT_AUDIO_LOOP = "alertAudioLoop"
         const val EXTRA_ALERT_AUDIO_UNTIL = "alertAudioUntil"

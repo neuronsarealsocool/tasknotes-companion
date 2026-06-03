@@ -18,6 +18,7 @@ data class ScheduledNotificationEntity(
     val alertStyle: String?,
     val alertNote: String?,
     val alertImage: String?,
+    val alertVideo: String?,
     val alertAudio: String?,
     val alertAudioLoop: Boolean,
     val alertAudioUntil: String?,

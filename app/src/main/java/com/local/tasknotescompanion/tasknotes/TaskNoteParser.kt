@@ -285,6 +285,7 @@ class TaskNoteParser {
             style = raw["style"]?.toString() ?: "fullscreen",
             note = raw["note"]?.toString(),
             image = raw["image"]?.toString(),
+            video = raw["video"]?.toString(),
             audio = raw["audio"]?.toString(),
             audioLoop = raw["audioLoop"]?.toString()?.toBooleanStrictOrNull() ?: true,
             audioUntil = raw["audioUntil"]?.toString() ?: "dismiss",
@@ -328,6 +329,7 @@ class TaskNoteParser {
         map["style"] = style
         note?.let { map["note"] = it } ?: map.remove("note")
         image?.let { map["image"] = it } ?: map.remove("image")
+        video?.let { map["video"] = it } ?: map.remove("video")
         audio?.let { map["audio"] = it } ?: map.remove("audio")
         map["audioLoop"] = audioLoop
         map["audioUntil"] = audioUntil

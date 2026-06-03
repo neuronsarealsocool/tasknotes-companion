@@ -507,6 +507,7 @@ private fun QuickAddDialog(
     var priorityRemoved by remember { mutableStateOf(false) }
     var alertNote by rememberSaveable { mutableStateOf("") }
     var alertImage by rememberSaveable { mutableStateOf<String?>(null) }
+    var alertVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var alertAudio by rememberSaveable { mutableStateOf<String?>(null) }
     var alertAudioLoop by rememberSaveable { mutableStateOf(true) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -528,6 +529,17 @@ private fun QuickAddDialog(
                 Toast.makeText(context, "Audio added to default reminders", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Could not copy audio into vault", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val relative = copyPickedMedia(context, vaultPath, uri, "video")
+            if (relative != null) {
+                alertVideo = relative
+                Toast.makeText(context, "Video added to default reminders", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Could not copy video into vault", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -556,6 +568,7 @@ private fun QuickAddDialog(
             style = "fullscreen",
             note = alertNote.ifBlank { null },
             image = alertImage,
+            video = alertVideo,
             audio = alertAudio,
             audioLoop = alertAudioLoop,
             audioUntil = "dismiss",
@@ -666,14 +679,21 @@ private fun QuickAddDialog(
                     OutlinedButton(
                         onClick = { imagePicker.launch("image/*") },
                         modifier = Modifier.weight(1f),
-                    ) { Text(if (alertImage.isNullOrBlank()) "Pick photo" else "Change photo") }
+                    ) { Text(if (alertImage.isNullOrBlank()) "Pick photo/GIF" else "Change photo/GIF") }
                     OutlinedButton(
                         onClick = { audioPicker.launch("audio/*") },
                         modifier = Modifier.weight(1f),
                     ) { Text(if (alertAudio.isNullOrBlank()) "Pick audio" else "Change audio") }
                 }
+                OutlinedButton(
+                    onClick = { videoPicker.launch("video/*") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (alertVideo.isNullOrBlank()) "Pick video" else "Change video") }
                 alertImage?.let {
-                    Text("Photo: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Photo/GIF: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                alertVideo?.let {
+                    Text("Video: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 alertAudio?.let {
                     Text("Audio: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -685,6 +705,7 @@ private fun QuickAddDialog(
                         label = { Text("Loop audio") },
                     )
                     TextButton(onClick = { alertImage = null }) { Text("Remove photo") }
+                    TextButton(onClick = { alertVideo = null }) { Text("Remove video") }
                     TextButton(onClick = { alertAudio = null }) { Text("Remove audio") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -896,6 +917,22 @@ private fun ReminderEditor(reminders: List<ReminderSpec>, vaultPath: String, onR
         mediaTargetReminderId = null
         mediaTargetKind = null
     }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val targetId = mediaTargetReminderId
+        if (uri != null && targetId != null) {
+            val relative = copyPickedMedia(context, vaultPath, uri, "video")
+            if (relative != null) {
+                onReminders(reminders.map { reminder ->
+                    if (reminder.id == targetId) reminder.withAlert(reminder.alertForEdit().copy(video = relative)) else reminder
+                })
+                Toast.makeText(context, "Video added to reminder", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Could not copy video into vault", Toast.LENGTH_LONG).show()
+            }
+        }
+        mediaTargetReminderId = null
+        mediaTargetKind = null
+    }
     var absoluteDate by remember { mutableStateOf(LocalDate.now()) }
     var absoluteTime by remember { mutableStateOf(LocalTime.now().plusHours(1).withSecond(0).withNano(0)) }
     var absoluteCalendarOpen by remember { mutableStateOf(false) }
@@ -932,7 +969,7 @@ private fun ReminderEditor(reminders: List<ReminderSpec>, vaultPath: String, onR
                                 imagePicker.launch("image/*")
                             },
                             modifier = Modifier.weight(1f),
-                        ) { Text(if (alert.image.isNullOrBlank()) "Pick photo" else "Change photo") }
+                        ) { Text(if (alert.image.isNullOrBlank()) "Pick photo/GIF" else "Change photo/GIF") }
                         OutlinedButton(
                             onClick = {
                                 mediaTargetReminderId = reminder.id
@@ -942,8 +979,19 @@ private fun ReminderEditor(reminders: List<ReminderSpec>, vaultPath: String, onR
                             modifier = Modifier.weight(1f),
                         ) { Text(if (alert.audio.isNullOrBlank()) "Pick audio" else "Change audio") }
                     }
+                    OutlinedButton(
+                        onClick = {
+                            mediaTargetReminderId = reminder.id
+                            mediaTargetKind = "video"
+                            videoPicker.launch("video/*")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (alert.video.isNullOrBlank()) "Pick video" else "Change video") }
                     alert.image?.let {
-                        Text("Photo: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Photo/GIF: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    alert.video?.let {
+                        Text("Video: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     alert.audio?.let {
                         Text("Audio: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -960,6 +1008,10 @@ private fun ReminderEditor(reminders: List<ReminderSpec>, vaultPath: String, onR
                             onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(image = null)) else it }) },
                             modifier = Modifier.weight(1f),
                         ) { Text("Remove photo") }
+                        TextButton(
+                            onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(video = null)) else it }) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Remove video") }
                         TextButton(
                             onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(audio = null)) else it }) },
                             modifier = Modifier.weight(1f),
@@ -1190,6 +1242,7 @@ private fun ReminderSpec.withAlert(alert: ReminderAlert): ReminderSpec {
         it.style == "fullscreen" ||
             !it.note.isNullOrBlank() ||
             !it.image.isNullOrBlank() ||
+            !it.video.isNullOrBlank() ||
             !it.audio.isNullOrBlank() ||
             it.allowOverlay ||
             it.audioLoop != true ||
@@ -1207,7 +1260,11 @@ private fun copyPickedMedia(context: Context, vaultPath: String, uri: Uri, prefi
     val mediaDir = File(vault, "TaskNotes Companion/Media").apply { mkdirs() }
     val extension = context.contentResolver.getType(uri)
         ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
-        ?: if (prefix == "image") "jpg" else "mp3"
+        ?: when (prefix) {
+            "image" -> "jpg"
+            "video" -> "mp4"
+            else -> "mp3"
+        }
     val target = uniqueMediaFile(mediaDir, "${prefix}_${System.currentTimeMillis()}.$extension")
     context.contentResolver.openInputStream(uri)?.use { input ->
         target.outputStream().use { output -> input.copyTo(output) }
