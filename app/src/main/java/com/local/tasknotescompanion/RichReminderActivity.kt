@@ -16,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.local.tasknotescompanion.notifications.ReminderReceiver
@@ -68,17 +67,19 @@ class RichReminderActivity : ComponentActivity() {
                     if (!videoPath.isNullOrBlank()) {
                         val file = File(videoPath)
                         Log.i(TAG, "Loading rich reminder video ${file.absolutePath}; exists=${file.exists()}; size=${file.length()}")
-                        addView(VideoView(context).apply {
+                        addView(RichReminderVideoView(context).apply {
                             setVideoURI(Uri.fromFile(file))
                             setOnPreparedListener { player ->
+                                setSourceSize(player.videoWidth, player.videoHeight)
                                 player.isLooping = true
                                 start()
                             }
                             setOnCompletionListener { start() }
                         }, FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                        ))
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            Gravity.CENTER,
+                        ).apply { setMargins(0, dp(48), 0, 0) })
                     } else {
                         imagePath?.let { path ->
                         val file = File(path)
