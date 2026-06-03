@@ -13,6 +13,7 @@ class NotificationPreferencesStore(context: Context) {
     fun load(): NotificationPreferences {
         migrateLegacyDateOnlyAnchorTime()
         migrateDueAtDefaultReminder()
+        migrateScheduledAtDefaultReminder()
         migrateAfterScheduledDefaultReminders()
         return NotificationPreferences(
             remindersEnabled = prefs.getBoolean("remindersEnabled", true),
@@ -86,6 +87,23 @@ class NotificationPreferencesStore(context: Context) {
             .apply()
     }
 
+    private fun migrateScheduledAtDefaultReminder() {
+        if (prefs.getBoolean("scheduledAtDefaultReminderAdded", false)) return
+        val existing = prefs.getString("defaultReminders", null)
+            ?.lines()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.toMutableList()
+            ?: DEFAULT_REMINDERS.lines().filter { it.isNotBlank() }.toMutableList()
+        if (existing.none { it.equals(SCHEDULED_AT_DEFAULT_REMINDER, ignoreCase = true) }) {
+            existing += SCHEDULED_AT_DEFAULT_REMINDER
+        }
+        prefs.edit()
+            .putString("defaultReminders", existing.joinToString("\n"))
+            .putBoolean("scheduledAtDefaultReminderAdded", true)
+            .apply()
+    }
+
     private fun parseDefaultReminders(value: String): List<ReminderSpec.Relative> {
         return value.lines().filter { it.isNotBlank() }.mapIndexedNotNull { index, line ->
             val parts = line.split("|", limit = 2)
@@ -107,7 +125,8 @@ class NotificationPreferencesStore(context: Context) {
     private companion object {
         const val DEFAULT_DATE_ONLY_ANCHOR = "10:15"
         const val DUE_AT_DEFAULT_REMINDER = "PT0M|due"
+        const val SCHEDULED_AT_DEFAULT_REMINDER = "PT0M|scheduled"
         const val AFTER_SCHEDULED_DEFAULT_REMINDERS = "PT5M|scheduled\nPT10M|scheduled\nPT15M|scheduled\nPT30M|scheduled\nPT1H|scheduled\nPT2H|scheduled"
-        const val DEFAULT_REMINDERS = "-PT15M|due\n$DUE_AT_DEFAULT_REMINDER\n$AFTER_SCHEDULED_DEFAULT_REMINDERS"
+        const val DEFAULT_REMINDERS = "-PT15M|due\n$DUE_AT_DEFAULT_REMINDER\n$SCHEDULED_AT_DEFAULT_REMINDER\n$AFTER_SCHEDULED_DEFAULT_REMINDERS"
     }
 }

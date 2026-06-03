@@ -367,7 +367,7 @@ class ReminderScheduler(
             description = description,
             repeatEveryMillis = repeatEvery?.toMillis(),
             repeatUntilCompleted = repeatUntilCompleted,
-            alertStyle = alert?.style ?: "fullscreen",
+            alertStyle = alert?.style,
             alertNote = alert?.note,
             alertImage = alert?.image,
             alertAudio = alert?.audio,

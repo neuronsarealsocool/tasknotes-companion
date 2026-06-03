@@ -1,6 +1,7 @@
 package com.local.tasknotescompanion.notifications
 
 import com.local.tasknotescompanion.domain.NotificationPreferences
+import com.local.tasknotescompanion.domain.ReminderAlert
 import com.local.tasknotescompanion.domain.ReminderAnchor
 import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.TaskFrontmatter
@@ -74,6 +75,73 @@ class ReminderResolverTest {
         assertEquals(1, resolved.size)
         assertEquals("scheduled_at_time", resolved.single().id)
         assertEquals("reminder", resolved.single().source)
+    }
+
+    @Test
+    fun scheduledAtTimeReminderResolvesForScheduledOnlyTask() {
+        val task = task(
+            scheduled = LocalDate.parse("2026-05-14"),
+            scheduledTime = LocalTime.parse("15:30"),
+            reminders = listOf(
+                ReminderSpec.Relative("scheduled_at_time", ReminderAnchor.SCHEDULED, Duration.ZERO),
+                ReminderSpec.Relative("due_at_time", ReminderAnchor.DUE, Duration.ZERO),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = true))
+
+        assertEquals(1, resolved.size)
+        assertEquals("scheduled_at_time", resolved.single().id)
+        assertEquals(LocalDateTime.parse("2026-05-14T15:30:00"), resolved.single().triggerAt)
+    }
+
+    @Test
+    fun fallsBackRichDueAtTimeReminderToScheduledWhenTaskHasNoDueDate() {
+        val task = task(
+            scheduled = LocalDate.parse("2026-05-14"),
+            scheduledTime = LocalTime.parse("15:30"),
+            reminders = listOf(
+                ReminderSpec.Relative(
+                    id = "legacy_due_at_time",
+                    relatedTo = ReminderAnchor.DUE,
+                    offset = Duration.ZERO,
+                    alert = ReminderAlert(note = "legacy rich alert"),
+                ),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = true))
+
+        assertEquals(1, resolved.size)
+        assertEquals("legacy_due_at_time", resolved.single().id)
+        assertEquals(LocalDateTime.parse("2026-05-14T15:30:00"), resolved.single().triggerAt)
+    }
+
+    @Test
+    fun doesNotFallbackDueAtTimeWhenScheduledAtTimeReminderExists() {
+        val task = task(
+            scheduled = LocalDate.parse("2026-05-14"),
+            scheduledTime = LocalTime.parse("15:30"),
+            reminders = listOf(
+                ReminderSpec.Relative(
+                    id = "legacy_due_at_time",
+                    relatedTo = ReminderAnchor.DUE,
+                    offset = Duration.ZERO,
+                    alert = ReminderAlert(note = "legacy rich alert"),
+                ),
+                ReminderSpec.Relative(
+                    id = "scheduled_at_time",
+                    relatedTo = ReminderAnchor.SCHEDULED,
+                    offset = Duration.ZERO,
+                    alert = ReminderAlert(note = "scheduled rich alert"),
+                ),
+            ),
+        )
+
+        val resolved = resolver.resolve(task, NotificationPreferences(overdueReminderEnabled = true))
+
+        assertEquals(1, resolved.size)
+        assertEquals("scheduled_at_time", resolved.single().id)
     }
 
     @Test
