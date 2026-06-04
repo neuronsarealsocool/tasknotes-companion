@@ -1,9 +1,12 @@
 package com.local.tasknotescompanion.quickadd
 
 import com.local.tasknotescompanion.domain.ReminderAlert
+import com.local.tasknotescompanion.domain.ReminderAnchor
+import com.local.tasknotescompanion.domain.ReminderSpec
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.Month
 import java.time.format.TextStyle
@@ -25,6 +28,8 @@ data class QuickAddDraft(
     val priority: String? = null,
     val timeEstimateMinutes: Int? = null,
     val alert: ReminderAlert? = null,
+    val reminders: List<ReminderSpec> = emptyList(),
+    val suppressDefaultReminders: Boolean = false,
     val tokens: List<QuickAddToken> = emptyList(),
 )
 
@@ -33,12 +38,22 @@ data class QuickAddToken(
     val text: String,
 )
 
-enum class QuickAddTokenKind { DATE, TIME, TAG, PROJECT, CONTEXT, PRIORITY, TASK_FILE }
+enum class QuickAddTokenKind { DATE, TIME, TAG, PROJECT, CONTEXT, PRIORITY, REPEAT, TASK_FILE }
 
-class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.now() }) {
+class QuickAddParser(
+    private val nowProvider: () -> LocalDateTime = { LocalDateTime.now() },
+    private val todayProvider: () -> LocalDate = { LocalDate.now() },
+) {
     fun parse(text: String, target: QuickAddDateTarget = QuickAddDateTarget.SCHEDULED): QuickAddDraft {
         val removals = mutableListOf<IntRange>()
         val tokens = mutableListOf<QuickAddToken>()
+        val windowRepeat = parseWindowRepeat(text)
+        windowRepeat?.let {
+            tokens += QuickAddToken(
+                QuickAddTokenKind.REPEAT,
+                "Every ${it.interval.toMinutes()} minutes during ${it.windows.joinToString(", ")}",
+            )
+        }
         val tags = MetadataRegex.findAll(text).filter { it.value.startsWith("#") }.map {
             removals += it.range
             tokens += QuickAddToken(QuickAddTokenKind.TAG, it.value)
@@ -101,7 +116,7 @@ class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.no
 
         tokens += QuickAddToken(QuickAddTokenKind.TASK_FILE, "Task File")
 
-        val scheduledDate = parsedRange?.first ?: if (target == QuickAddDateTarget.SCHEDULED) singleDate else null
+        val scheduledDate = windowRepeat?.firstTrigger?.toLocalDate() ?: parsedRange?.first ?: if (target == QuickAddDateTarget.SCHEDULED) singleDate else null
         val dueDate = if (parsedRange != null) null else if (target == QuickAddDateTarget.DUE) singleDate else null
         val timeEstimateMinutes = parsedRange?.let { (start, end) ->
             val minutes = Duration.between(
@@ -112,10 +127,10 @@ class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.no
         }
         return QuickAddDraft(
             rawText = text,
-            title = text.trim(),
+            title = windowRepeat?.title ?: text.trim(),
             dateTarget = target,
             scheduled = scheduledDate,
-            scheduledTime = if (scheduledDate != null) time else null,
+            scheduledTime = windowRepeat?.firstTrigger?.toLocalTime() ?: if (scheduledDate != null) time else null,
             due = dueDate,
             dueTime = if (dueDate != null) time else null,
             tags = tags,
@@ -123,6 +138,8 @@ class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.no
             contexts = contexts,
             priority = priority,
             timeEstimateMinutes = timeEstimateMinutes,
+            reminders = windowRepeat?.toReminders().orEmpty(),
+            suppressDefaultReminders = windowRepeat != null,
             tokens = tokens,
         )
     }
@@ -201,11 +218,63 @@ class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.no
         return null
     }
 
+    private fun parseWindowRepeat(text: String): WindowRepeat? {
+        val intervalMatch = WindowIntervalRegex.find(text) ?: return null
+        if (!EveryDayRegex.containsMatchIn(text) || !BetweenHoursRegex.containsMatchIn(text)) return null
+        val intervalMinutes = intervalMatch.groupValues[1].toLongOrNull()?.takeIf { it > 0 } ?: return null
+        val windows = WindowRegex.findAll(text)
+            .mapNotNull { match ->
+                val start = parseTimeToken(match.groupValues[1])
+                val end = parseTimeToken(match.groupValues[2])
+                if (start != null && end != null && end.isAfter(start)) {
+                    TimeWindow(start, end)
+                } else {
+                    null
+                }
+            }
+            .toList()
+            .distinct()
+            .sortedBy { it.start }
+        if (windows.isEmpty()) return null
+        val title = RemindMeRegex.find(text)?.groupValues?.getOrNull(1)?.trim(' ', '.', ',', '?')
+            ?.takeIf { it.isNotBlank() }
+            ?: text.trim()
+        val firstTrigger = nextWindowTrigger(windows)
+        return WindowRepeat(
+            title = title,
+            interval = Duration.ofMinutes(intervalMinutes),
+            windows = windows,
+            firstTrigger = firstTrigger,
+        )
+    }
+
+    private fun nextWindowTrigger(windows: List<TimeWindow>): LocalDateTime {
+        val now = nowProvider().withSecond(0).withNano(0)
+        var day = now.toLocalDate()
+        repeat(8) {
+            windows.forEach { window ->
+                val start = day.atTime(window.start)
+                val end = day.atTime(window.end)
+                when {
+                    now.isBefore(start) || now == start -> return start
+                    now.isAfter(start) && now.isBefore(end) -> return now.plusMinutes(1)
+                }
+            }
+            day = day.plusDays(1)
+        }
+        return day.atTime(windows.first().start)
+    }
+
     private fun IntRange.intersects(other: IntRange): Boolean = first <= other.last && other.first <= last
 
     private companion object {
         val MetadataRegex = Regex("""(?<!\S)[#@+][A-Za-z][A-Za-z0-9_-]*""")
         val PriorityRegex = Regex("""(?i)\b(low|medium|high)\s+priority\b""")
+        val EveryDayRegex = Regex("""(?i)\bevery\s+day\b""")
+        val BetweenHoursRegex = Regex("""(?i)\bbetween\s+(?:the\s+)?hours?\s+of\b""")
+        val WindowIntervalRegex = Regex("""(?i)\bevery\s+(\d+)\s+minutes?\b""")
+        val WindowRegex = Regex("""(?i)(\d{1,2}(?:(?::|\s+)\d{2})?\s*(?:am|pm))\s+and\s+(\d{1,2}(?:(?::|\s+)\d{2})?\s*(?:am|pm))""")
+        val RemindMeRegex = Regex("""(?i)\bremind\s+me\s+to\s+(.+?)\s*$""")
         val RangeRegex = Regex("""(?i)\b(?:from\s+)?([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}/\d{1,2}|\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?|today|tomorrow)\s*(?:to|-)\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}/\d{1,2}|\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?|today|tomorrow)\b""")
         val DatePatterns = listOf(
             Regex("""(?i)\b\d{4}-\d{2}-\d{2}\b"""),
@@ -224,3 +293,34 @@ class QuickAddParser(private val todayProvider: () -> LocalDate = { LocalDate.no
         val MonthDayRegex = Regex("""([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?""")
     }
 }
+
+private data class TimeWindow(
+    val start: LocalTime,
+    val end: LocalTime,
+) {
+    override fun toString(): String = "${start.toSimpleString()}-${end.toSimpleString()}"
+}
+
+private data class WindowRepeat(
+    val title: String,
+    val interval: Duration,
+    val windows: List<TimeWindow>,
+    val firstTrigger: LocalDateTime,
+) {
+    fun toReminders(): List<ReminderSpec> {
+        val windowValues = windows.map { it.toString() }
+        return listOf(
+            ReminderSpec.Relative(
+                id = "quick_repeat_${System.currentTimeMillis()}",
+                relatedTo = ReminderAnchor.SCHEDULED,
+                offset = Duration.ZERO,
+                description = "Every ${interval.toMinutes()} minutes during ${windowValues.joinToString(", ")}",
+                raw = mapOf("repeatWindows" to windowValues),
+                repeatEvery = interval,
+                repeatUntilCompleted = true,
+            ),
+        )
+    }
+}
+
+private fun LocalTime.toSimpleString(): String = "%02d:%02d".format(hour, minute)

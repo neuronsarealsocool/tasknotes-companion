@@ -15,6 +15,7 @@ data class ScheduledNotificationEntity(
     val description: String?,
     val repeatEveryMillis: Long?,
     val repeatUntilCompleted: Boolean,
+    val repeatWindows: String?,
     val alertStyle: String?,
     val alertNote: String?,
     val alertImage: String?,

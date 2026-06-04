@@ -25,6 +25,8 @@ import com.local.tasknotescompanion.domain.ResolvedReminder
 import com.local.tasknotescompanion.domain.TaskRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -82,6 +84,7 @@ class ReminderScheduler(
             description = label,
             repeatEveryMillis = null,
             repeatUntilCompleted = false,
+            repeatWindows = null,
             alertStyle = null,
             alertNote = null,
             alertImage = null,
@@ -120,6 +123,7 @@ class ReminderScheduler(
         val triggerAtMillis = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, System.currentTimeMillis())
         val repeatEveryMillis = intent.getLongExtra(EXTRA_REPEAT_EVERY_MILLIS, 0L).takeIf { it > 0L }
         val repeatUntilCompleted = intent.getBooleanExtra(EXTRA_REPEAT_UNTIL_COMPLETED, false)
+        val repeatWindows = intent.getStringExtra(EXTRA_REPEAT_WINDOWS)
         val alertStyle = intent.getStringExtra(EXTRA_ALERT_STYLE)
         val alertNote = intent.getStringExtra(EXTRA_ALERT_NOTE)
         val alertImage = intent.getStringExtra(EXTRA_ALERT_IMAGE)
@@ -140,6 +144,7 @@ class ReminderScheduler(
             description = description,
             repeatEveryMillis = repeatEveryMillis,
             repeatUntilCompleted = repeatUntilCompleted,
+            repeatWindows = repeatWindows,
             alertStyle = alertStyle,
             alertNote = alertNote,
             alertImage = alertImage,
@@ -165,9 +170,13 @@ class ReminderScheduler(
             return@withContext
         }
         val deliveredAt = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, System.currentTimeMillis())
-        var nextAt = deliveredAt + repeatEveryMillis
-        val now = System.currentTimeMillis()
-        while (nextAt <= now) nextAt += repeatEveryMillis
+        val repeatWindows = intent.getStringExtra(EXTRA_REPEAT_WINDOWS)
+        val nextAt = nextRepeatMillis(
+            deliveredAt = deliveredAt,
+            repeatEveryMillis = repeatEveryMillis,
+            nowMillis = System.currentTimeMillis(),
+            repeatWindows = repeatWindows,
+        )
         val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID) ?: "repeat"
         val nextRow = ScheduledNotificationEntity(
             id = "${taskId}_${reminderId}_repeat_$nextAt".replace(Regex("[^A-Za-z0-9_\\-]"), "_"),
@@ -180,6 +189,7 @@ class ReminderScheduler(
             description = intent.getStringExtra(EXTRA_DESCRIPTION),
             repeatEveryMillis = repeatEveryMillis,
             repeatUntilCompleted = true,
+            repeatWindows = repeatWindows,
             alertStyle = intent.getStringExtra(EXTRA_ALERT_STYLE),
             alertNote = intent.getStringExtra(EXTRA_ALERT_NOTE),
             alertImage = intent.getStringExtra(EXTRA_ALERT_IMAGE),
@@ -309,6 +319,7 @@ class ReminderScheduler(
                 .putExtra(EXTRA_TRIGGER_AT_MILLIS, row.triggerAtMillis)
                 .putExtra(EXTRA_REPEAT_EVERY_MILLIS, row.repeatEveryMillis ?: 0L)
                 .putExtra(EXTRA_REPEAT_UNTIL_COMPLETED, row.repeatUntilCompleted)
+                .putExtra(EXTRA_REPEAT_WINDOWS, row.repeatWindows)
                 .putReminderExtras(row),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -371,6 +382,7 @@ class ReminderScheduler(
             description = description,
             repeatEveryMillis = repeatEvery?.toMillis(),
             repeatUntilCompleted = repeatUntilCompleted,
+            repeatWindows = raw.repeatWindowsValue(),
             alertStyle = alert?.style,
             alertNote = alert?.note,
             alertImage = alert?.image,
@@ -401,6 +413,7 @@ class ReminderScheduler(
             .putExtra(EXTRA_TRIGGER_AT_MILLIS, row.triggerAtMillis)
             .putExtra(EXTRA_REPEAT_EVERY_MILLIS, row.repeatEveryMillis ?: 0L)
             .putExtra(EXTRA_REPEAT_UNTIL_COMPLETED, row.repeatUntilCompleted)
+            .putExtra(EXTRA_REPEAT_WINDOWS, row.repeatWindows)
             .putExtra(EXTRA_ALERT_STYLE, row.alertStyle)
             .putExtra(EXTRA_ALERT_NOTE, row.alertNote)
             .putExtra(EXTRA_ALERT_IMAGE, resolveVaultPath(row.alertImage))
@@ -422,9 +435,83 @@ class ReminderScheduler(
         if (isSchedulable(now)) return this
         val repeat = repeatEvery ?: return this
         if (!repeatUntilCompleted || repeat.isZero || repeat.isNegative) return this
-        var next = triggerAt.plus(repeat)
-        while (!next.isAfter(now)) next = next.plus(repeat)
+        val next = nextRepeatDateTime(
+            deliveredAt = triggerAt,
+            repeatEvery = repeat,
+            now = now,
+            repeatWindows = raw.repeatWindowsValue(),
+        )
         return copy(triggerAt = next)
+    }
+
+    private fun nextRepeatMillis(
+        deliveredAt: Long,
+        repeatEveryMillis: Long,
+        nowMillis: Long,
+        repeatWindows: String?,
+    ): Long {
+        val zone = ZoneId.systemDefault()
+        val delivered = LocalDateTime.ofInstant(Instant.ofEpochMilli(deliveredAt), zone)
+        val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowMillis), zone)
+        return nextRepeatDateTime(
+            deliveredAt = delivered,
+            repeatEvery = Duration.ofMillis(repeatEveryMillis),
+            now = now,
+            repeatWindows = repeatWindows,
+        ).toMillis()
+    }
+
+    private fun nextRepeatDateTime(
+        deliveredAt: LocalDateTime,
+        repeatEvery: Duration,
+        now: LocalDateTime,
+        repeatWindows: String?,
+    ): LocalDateTime {
+        var next = deliveredAt.plus(repeatEvery)
+        while (!next.isAfter(now)) next = next.plus(repeatEvery)
+        val windows = repeatWindows.parseRepeatWindows()
+        if (windows.isEmpty()) return next
+        return nextInsideWindows(next, windows)
+    }
+
+    private fun nextInsideWindows(candidate: LocalDateTime, windows: List<RepeatWindow>): LocalDateTime {
+        var day = candidate.toLocalDate()
+        var cursor = candidate
+        repeat(32) {
+            windows.forEach { window ->
+                val start = day.atTime(window.start)
+                val end = day.atTime(window.end)
+                when {
+                    cursor.isBefore(start) || cursor == start -> return start
+                    !cursor.isBefore(start) && !cursor.isAfter(end) -> return cursor
+                }
+            }
+            day = day.plusDays(1)
+            cursor = day.atStartOfDay()
+        }
+        return candidate
+    }
+
+    private fun String?.parseRepeatWindows(): List<RepeatWindow> {
+        if (isNullOrBlank()) return emptyList()
+        return split(';', ',')
+            .mapNotNull { part ->
+                val pieces = part.trim().split('-', limit = 2)
+                if (pieces.size != 2) return@mapNotNull null
+                val start = runCatching { LocalTime.parse(pieces[0].trim()) }.getOrNull()
+                val end = runCatching { LocalTime.parse(pieces[1].trim()) }.getOrNull()
+                if (start != null && end != null && end.isAfter(start)) RepeatWindow(start, end) else null
+            }
+            .distinct()
+            .sortedBy { it.start }
+    }
+
+    private fun Map<String, Any?>.repeatWindowsValue(): String? {
+        return when (val value = this["repeatWindows"]) {
+            is Iterable<*> -> value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }.joinToString(";").ifBlank { null }
+            is Array<*> -> value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }.joinToString(";").ifBlank { null }
+            else -> value?.toString()?.trim()?.takeIf(String::isNotBlank)
+        }
     }
 
     companion object {
@@ -450,6 +537,7 @@ class ReminderScheduler(
         const val EXTRA_TRIGGER_AT_MILLIS = "triggerAtMillis"
         const val EXTRA_REPEAT_EVERY_MILLIS = "repeatEveryMillis"
         const val EXTRA_REPEAT_UNTIL_COMPLETED = "repeatUntilCompleted"
+        const val EXTRA_REPEAT_WINDOWS = "repeatWindows"
         const val EXTRA_ALERT_STYLE = "alertStyle"
         const val EXTRA_ALERT_NOTE = "alertNote"
         const val EXTRA_ALERT_IMAGE = "alertImage"
@@ -464,6 +552,11 @@ class ReminderScheduler(
         private const val TAG = "TaskNotesReminder"
     }
 }
+
+private data class RepeatWindow(
+    val start: LocalTime,
+    val end: LocalTime,
+)
 
 private fun LocalDateTime.toMillis(): Long = atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 

@@ -38,7 +38,7 @@ class TaskNotesApp : Application() {
     override fun onCreate() {
         super.onCreate()
         database = Room.databaseBuilder(this, AppDatabase::class.java, "tasknotes.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
         mappingStore = TaskMappingStore(this)
         repository = VaultRepository(database.taskDao(), mappingStore)
@@ -173,6 +173,12 @@ class TaskNotesApp : Application() {
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE scheduled_notifications ADD COLUMN alertVideo TEXT")
+            }
+        }
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE scheduled_notifications ADD COLUMN repeatWindows TEXT")
             }
         }
     }

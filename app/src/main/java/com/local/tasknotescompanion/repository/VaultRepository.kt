@@ -75,6 +75,8 @@ class VaultRepository(
             .map { it.trim().trimStart('#') }
             .filter { it.isNotBlank() }
             .distinct()
+        val taskReminders = (if (draft.suppressDefaultReminders) draft.reminders else reminders + draft.reminders)
+            .map { it.withDefaultAlert(draft.alert ?: ReminderAlert(style = "fullscreen")) }
         val task = TaskRecord(
             id = file.relativeTo(root).path.replace('\\', '/'),
             path = file.absolutePath,
@@ -89,7 +91,7 @@ class VaultRepository(
             tags = tags,
             projects = draft.projects.distinct(),
             contexts = draft.contexts.distinct(),
-            reminders = reminders.map { it.withDefaultAlert(draft.alert ?: ReminderAlert(style = "fullscreen")) },
+            reminders = taskReminders,
             recurrence = null,
             completedDate = null,
             modifiedAt = System.currentTimeMillis(),

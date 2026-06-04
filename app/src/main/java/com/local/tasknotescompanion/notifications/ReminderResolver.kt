@@ -95,6 +95,7 @@ class ReminderResolver {
             repeatEvery = reminder.repeatEvery,
             repeatUntilCompleted = reminder.repeatUntilCompleted,
             alert = reminder.alert,
+            raw = reminder.raw,
         )
     }
 }

@@ -89,6 +89,7 @@ data class ResolvedReminder(
     val repeatEvery: Duration? = null,
     val repeatUntilCompleted: Boolean = false,
     val alert: ReminderAlert? = null,
+    val raw: Map<String, Any?> = emptyMap(),
 )
 
 data class SnoozeRecord(

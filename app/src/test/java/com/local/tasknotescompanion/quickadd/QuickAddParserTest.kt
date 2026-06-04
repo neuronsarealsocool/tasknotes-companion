@@ -1,9 +1,14 @@
 package com.local.tasknotescompanion.quickadd
 
+import com.local.tasknotescompanion.domain.ReminderAnchor
+import com.local.tasknotescompanion.domain.ReminderSpec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 class QuickAddParserTest {
@@ -120,5 +125,28 @@ class QuickAddParserTest {
         assertNull(draft.scheduled)
         assertEquals(LocalDate.parse("2026-05-17"), draft.due)
         assertEquals(LocalTime.parse("09:00"), draft.dueTime)
+    }
+
+    @Test
+    fun parsesDailyWindowRepeatReminder() {
+        val windowParser = QuickAddParser(
+            todayProvider = { LocalDate.parse("2026-06-04") },
+            nowProvider = { LocalDateTime.parse("2026-06-04T08:15") },
+        )
+
+        val draft = windowParser.parse(
+            "every day between the hours of 9 am and 11 30 am, and 1 pm and 6 30 pm, every 18 minutes can you remind me to take out the garbage",
+        )
+
+        assertEquals("take out the garbage", draft.title)
+        assertEquals(LocalDate.parse("2026-06-04"), draft.scheduled)
+        assertEquals(LocalTime.parse("09:00"), draft.scheduledTime)
+        assertTrue(draft.suppressDefaultReminders)
+        val reminder = draft.reminders.single() as ReminderSpec.Relative
+        assertEquals(ReminderAnchor.SCHEDULED, reminder.relatedTo)
+        assertEquals(Duration.ZERO, reminder.offset)
+        assertEquals(Duration.ofMinutes(18), reminder.repeatEvery)
+        assertTrue(reminder.repeatUntilCompleted)
+        assertEquals(listOf("09:00-11:30", "13:00-18:30"), reminder.raw["repeatWindows"])
     }
 }

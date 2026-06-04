@@ -262,6 +262,9 @@ class TaskNoteParserTest {
                 offset: PT0M
                 repeatEvery: PT10M
                 repeatUntil: completed
+                repeatWindows:
+                  - 09:00-11:30
+                  - 13:00-18:30
                 description: Every 10 minutes until complete
             ---
             """.trimIndent(),
@@ -273,8 +276,12 @@ class TaskNoteParserTest {
 
         assertEquals(Duration.ofMinutes(10), reminder.repeatEvery)
         assertTrue(reminder.repeatUntilCompleted)
+        assertEquals(listOf("09:00-11:30", "13:00-18:30"), reminder.raw["repeatWindows"])
         assertTrue(rendered.contains("repeatEvery: PT10M"))
         assertTrue(rendered.contains("repeatUntil: completed"))
+        assertTrue(rendered.contains("repeatWindows:"))
+        assertTrue(rendered.contains("- 09:00-11:30"))
+        assertTrue(rendered.contains("- 13:00-18:30"))
     }
 
     @Test
