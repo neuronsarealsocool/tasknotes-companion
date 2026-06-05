@@ -5,6 +5,7 @@ import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.TaskMappingConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -127,6 +128,32 @@ class TaskNoteParserTest {
         val next = parser.nextOccurrence(task)
 
         assertEquals("2026-05-26", next!!.due.toString())
+    }
+
+    @Test
+    fun preservesNativeTaskNotesRRuleRecurrence() {
+        val root = Files.createTempDirectory("vault").toFile()
+        val file = File(root, "native-repeat.md")
+        file.writeText(
+            """
+            ---
+            title: Friday review
+            status: todo
+            tags: [task]
+            scheduled: 2026-06-05T08:30
+            recurrence: DTSTART:20260605T083000Z;FREQ=WEEKLY;INTERVAL=1;BYDAY=FR
+            recurrence_anchor: scheduled
+            ---
+            """.trimIndent(),
+        )
+
+        val task = parser.parse(file, root, TaskMappingConfig())!!
+        val rendered = parser.render(task, TaskMappingConfig())
+
+        assertEquals("DTSTART:20260605T083000Z;FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", task.recurrence!!.rrule)
+        assertTrue(rendered.contains("recurrence: DTSTART:20260605T083000Z;FREQ=WEEKLY;INTERVAL=1;BYDAY=FR"))
+        assertTrue(rendered.contains("recurrence_anchor: scheduled"))
+        assertNull(parser.nextOccurrence(task))
     }
 
     @Test

@@ -114,6 +114,7 @@ enum class RecurrenceUnit { DAY, WEEK, MONTH, YEAR }
 data class RecurrenceSpec(
     val interval: Int = 1,
     val unit: RecurrenceUnit = RecurrenceUnit.DAY,
+    val rrule: String? = null,
 )
 
 data class ValidationIssue(

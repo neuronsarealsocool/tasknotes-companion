@@ -36,7 +36,7 @@ fun TaskRecord.toEntity(): TaskEntity {
         projects = projects.joinToString("\n"),
         contexts = contexts.joinToString("\n"),
         reminders = dump.dumpToString(reminders.map { sanitizeYamlMap(it.toYamlMap()) }),
-        recurrence = recurrence?.let { "${it.interval} ${it.unit.name.lowercase()}" },
+        recurrence = recurrence?.let { it.rrule ?: "${it.interval} ${it.unit.name.lowercase()}" },
         completedDate = completedDate?.toString(),
         modifiedAt = modifiedAt,
         rawFrontmatter = dump.dumpToString(sanitizeYamlMap(frontmatter.raw)),
@@ -63,13 +63,30 @@ fun TaskEntity.toRecord(): TaskRecord {
         projects = projects.lines().filter { it.isNotBlank() },
         contexts = contexts.lines().filter { it.isNotBlank() },
         reminders = parseStoredReminders(reminders),
-        recurrence = recurrence?.let {
-            val parts = it.split(" ")
-            RecurrenceSpec(parts.firstOrNull()?.toIntOrNull() ?: 1, RecurrenceUnit.valueOf(parts.getOrElse(1) { "day" }.uppercase()))
-        },
+        recurrence = recurrence?.let { parseStoredRecurrence(it) },
         completedDate = completedDate?.let(LocalDateTime::parse),
         modifiedAt = modifiedAt,
         frontmatter = TaskFrontmatter(raw),
+    )
+}
+
+private fun parseStoredRecurrence(value: String): RecurrenceSpec? {
+    val text = value.trim()
+    if (text.isBlank()) return null
+    if (text.contains("FREQ=", ignoreCase = true) || text.startsWith("DTSTART:", ignoreCase = true)) {
+        val interval = Regex("""(?i)(?:^|;)INTERVAL=(\d+)""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+        val unit = when {
+            text.contains("FREQ=WEEKLY", ignoreCase = true) -> RecurrenceUnit.WEEK
+            text.contains("FREQ=MONTHLY", ignoreCase = true) -> RecurrenceUnit.MONTH
+            text.contains("FREQ=YEARLY", ignoreCase = true) -> RecurrenceUnit.YEAR
+            else -> RecurrenceUnit.DAY
+        }
+        return RecurrenceSpec(interval, unit, text)
+    }
+    val parts = text.split(" ")
+    return RecurrenceSpec(
+        parts.firstOrNull()?.toIntOrNull() ?: 1,
+        RecurrenceUnit.valueOf(parts.getOrElse(1) { "day" }.uppercase()),
     )
 }
 

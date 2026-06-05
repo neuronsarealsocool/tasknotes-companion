@@ -94,11 +94,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import androidx.compose.material3.rememberTimePickerState
@@ -510,6 +512,8 @@ private fun QuickAddDialog(
     var alertVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var alertAudio by rememberSaveable { mutableStateOf<String?>(null) }
     var alertAudioLoop by rememberSaveable { mutableStateOf(true) }
+    var recurrenceMode by rememberSaveable { mutableStateOf<String?>(null) }
+    var recurrenceDays by rememberSaveable { mutableStateOf(setOf<Int>()) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             val relative = copyPickedMedia(context, vaultPath, uri, "image")
@@ -554,10 +558,22 @@ private fun QuickAddDialog(
         priorityRemoved = false
     }
 
+    val effectiveScheduled = if (dateRemoved) null else parsed.scheduled
+    val effectiveScheduledTime = if (dateRemoved || timeRemoved) null else parsed.scheduledTime
+    val recurrenceBaseDate = effectiveScheduled ?: LocalDate.now()
+    val recurrenceSelection = recurrenceMode?.let {
+        buildQuickAddRecurrence(
+            mode = it,
+            date = recurrenceBaseDate,
+            time = effectiveScheduledTime,
+            selectedDays = recurrenceDays.mapNotNull { value -> DayOfWeek.entries.firstOrNull { day -> day.value == value } },
+        )
+    }
+
     val finalDraft = parsed.copy(
         title = title.trim(),
-        scheduled = if (dateRemoved) null else parsed.scheduled,
-        scheduledTime = if (dateRemoved || timeRemoved) null else parsed.scheduledTime,
+        scheduled = effectiveScheduled,
+        scheduledTime = effectiveScheduledTime,
         due = if (dateRemoved) null else parsed.due,
         dueTime = if (dateRemoved || timeRemoved) null else parsed.dueTime,
         tags = parsed.tags.filterNot { it in removedTags },
@@ -573,6 +589,8 @@ private fun QuickAddDialog(
             audioLoop = alertAudioLoop,
             audioUntil = "dismiss",
         ),
+        recurrenceRule = recurrenceSelection?.first,
+        recurrenceAnchor = recurrenceSelection?.second,
     )
     val hasSingleDate = parsed.scheduled != null && parsed.due == null || parsed.due != null && parsed.scheduled == null
 
@@ -667,6 +685,14 @@ private fun QuickAddDialog(
                     }
                     AssistChip(onClick = {}, label = { Text("Task File") })
                 }
+                QuickAddRecurrenceSection(
+                    recurrenceMode = recurrenceMode,
+                    onRecurrenceMode = { recurrenceMode = it },
+                    recurrenceDays = recurrenceDays,
+                    onRecurrenceDays = { recurrenceDays = it },
+                    recurrenceBaseDate = recurrenceBaseDate,
+                    recurrenceSelection = recurrenceSelection,
+                )
                 Text("Reminder overlay", style = MaterialTheme.typography.labelLarge)
                 OutlinedTextField(
                     value = alertNote,
@@ -731,6 +757,88 @@ private fun QuickAddDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickAddRecurrenceSection(
+    recurrenceMode: String?,
+    onRecurrenceMode: (String?) -> Unit,
+    recurrenceDays: Set<Int>,
+    onRecurrenceDays: (Set<Int>) -> Unit,
+    recurrenceBaseDate: LocalDate,
+    recurrenceSelection: Pair<String, String>?,
+) {
+    fun chooseWeeklyMode(mode: String) {
+        onRecurrenceMode(mode)
+        if (recurrenceDays.isEmpty()) onRecurrenceDays(setOf(recurrenceBaseDate.dayOfWeek.value))
+    }
+
+    Text("Recurrence", style = MaterialTheme.typography.labelLarge)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            FilterChip(
+                selected = recurrenceMode == null,
+                onClick = { onRecurrenceMode(null) },
+                label = { Text("None") },
+            )
+            FilterChip(
+                selected = recurrenceMode == "daily",
+                onClick = { onRecurrenceMode("daily") },
+                label = { Text("Daily") },
+            )
+            FilterChip(
+                selected = recurrenceMode == "weekdays",
+                onClick = { onRecurrenceMode("weekdays") },
+                label = { Text("Weekdays") },
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            FilterChip(
+                selected = recurrenceMode == "weekly",
+                onClick = { chooseWeeklyMode("weekly") },
+                label = { Text("Weekly") },
+            )
+            FilterChip(
+                selected = recurrenceMode == "biweekly",
+                onClick = { chooseWeeklyMode("biweekly") },
+                label = { Text("Every 2 weeks") },
+            )
+        }
+        FilterChip(
+            selected = recurrenceMode == "completion_weekly",
+            onClick = { chooseWeeklyMode("completion_weekly") },
+            label = { Text("Weekly after completion") },
+        )
+        if (recurrenceMode in setOf("weekly", "biweekly", "completion_weekly")) {
+            DayOfWeek.entries.chunked(4).forEach { rowDays ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    rowDays.forEach { day ->
+                        FilterChip(
+                            selected = day.value in recurrenceDays,
+                            onClick = {
+                                onRecurrenceDays(
+                                    if (day.value in recurrenceDays) {
+                                        recurrenceDays - day.value
+                                    } else {
+                                        recurrenceDays + day.value
+                                    },
+                                )
+                            },
+                            label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).take(1)) },
+                        )
+                    }
+                }
+            }
+        }
+        recurrenceSelection?.let {
+            Text(
+                "${it.first} (${it.second})",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -1312,6 +1420,46 @@ private enum class DateEditorField { SCHEDULED, DUE }
 
 private fun formatDateWithTime(date: LocalDate, time: LocalTime?): String {
     return if (time == null) date.toString() else "$date ${time.withSecond(0).withNano(0)}"
+}
+
+private fun buildQuickAddRecurrence(
+    mode: String,
+    date: LocalDate,
+    time: LocalTime?,
+    selectedDays: List<DayOfWeek>,
+): Pair<String, String> {
+    val dtStart = "DTSTART:${formatTaskNotesDtStart(date, time)}"
+    val rule = when (mode) {
+        "daily" -> "FREQ=DAILY;INTERVAL=1"
+        "weekdays" -> "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
+        "weekly", "completion_weekly" -> "FREQ=WEEKLY;INTERVAL=1;BYDAY=${formatByDay(selectedDays.ifEmpty { listOf(date.dayOfWeek) })}"
+        "biweekly" -> "FREQ=WEEKLY;INTERVAL=2;BYDAY=${formatByDay(selectedDays.ifEmpty { listOf(date.dayOfWeek) })}"
+        else -> return "" to "scheduled"
+    }
+    val anchor = if (mode == "completion_weekly") "completion" else "scheduled"
+    return "$dtStart;$rule" to anchor
+}
+
+private fun formatTaskNotesDtStart(date: LocalDate, time: LocalTime?): String {
+    return if (time == null) {
+        date.format(DateTimeFormatter.BASIC_ISO_DATE)
+    } else {
+        "${date.format(DateTimeFormatter.BASIC_ISO_DATE)}T${time.format(DateTimeFormatter.ofPattern("HHmm"))}00Z"
+    }
+}
+
+private fun formatByDay(days: List<DayOfWeek>): String {
+    return days.distinct().sortedBy { it.value }.joinToString(",") {
+        when (it) {
+            DayOfWeek.MONDAY -> "MO"
+            DayOfWeek.TUESDAY -> "TU"
+            DayOfWeek.WEDNESDAY -> "WE"
+            DayOfWeek.THURSDAY -> "TH"
+            DayOfWeek.FRIDAY -> "FR"
+            DayOfWeek.SATURDAY -> "SA"
+            DayOfWeek.SUNDAY -> "SU"
+        }
+    }
 }
 
 @Composable

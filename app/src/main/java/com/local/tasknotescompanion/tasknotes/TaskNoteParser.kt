@@ -73,7 +73,7 @@ class TaskNoteParser {
         putOrRemove(updated, config.tagsField, task.tags.takeIf { it.isNotEmpty() })
         putOrRemove(updated, config.projectsField, task.projects.takeIf { it.isNotEmpty() })
         putOrRemove(updated, config.contextsField, task.contexts.takeIf { it.isNotEmpty() })
-        putOrRemove(updated, config.recurrenceField, task.recurrence?.let { "every ${it.interval} ${it.unit.name.lowercase()}" })
+        putOrRemove(updated, config.recurrenceField, task.recurrence?.let { it.rrule ?: "every ${it.interval} ${it.unit.name.lowercase()}" })
         putOrRemove(updated, config.remindersField, task.reminders.map { it.toYamlMap() }.takeIf { it.isNotEmpty() })
         putOrRemove(updated, config.completedField, task.completedDate?.toString())
         updated.putIfAbsent("timeEstimate", 0)
@@ -117,6 +117,7 @@ class TaskNoteParser {
 
     fun nextOccurrence(task: TaskRecord): TaskRecord? {
         val recurrence = task.recurrence ?: return null
+        if (recurrence.rrule != null) return null
         val nextDue = task.due?.plus(recurrence)
         val nextScheduled = task.scheduled?.plus(recurrence)
         return task.copy(
@@ -365,8 +366,19 @@ class TaskNoteParser {
     }
 
     private fun parseRecurrence(value: Any?): RecurrenceSpec? {
-        val text = value?.toString()?.lowercase()?.trim() ?: return null
-        if (text.isBlank()) return null
+        val original = value?.toString()?.trim() ?: return null
+        if (original.isBlank()) return null
+        if (original.contains("FREQ=", ignoreCase = true) || original.startsWith("DTSTART:", ignoreCase = true)) {
+            val interval = Regex("""(?i)(?:^|;)INTERVAL=(\d+)""").find(original)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+            val unit = when {
+                original.contains("FREQ=WEEKLY", ignoreCase = true) -> RecurrenceUnit.WEEK
+                original.contains("FREQ=MONTHLY", ignoreCase = true) -> RecurrenceUnit.MONTH
+                original.contains("FREQ=YEARLY", ignoreCase = true) -> RecurrenceUnit.YEAR
+                else -> RecurrenceUnit.DAY
+            }
+            return RecurrenceSpec(interval, unit, original)
+        }
+        val text = original.lowercase()
         val interval = Regex("\\d+").find(text)?.value?.toIntOrNull() ?: 1
         val unit = when {
             "week" in text -> RecurrenceUnit.WEEK

@@ -30,6 +30,8 @@ data class QuickAddDraft(
     val alert: ReminderAlert? = null,
     val reminders: List<ReminderSpec> = emptyList(),
     val suppressDefaultReminders: Boolean = false,
+    val recurrenceRule: String? = null,
+    val recurrenceAnchor: String? = null,
     val tokens: List<QuickAddToken> = emptyList(),
 )
 

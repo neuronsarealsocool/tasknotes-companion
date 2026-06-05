@@ -6,6 +6,7 @@ import com.local.tasknotescompanion.data.toEntity
 import com.local.tasknotescompanion.data.toRecord
 import com.local.tasknotescompanion.domain.ReminderAlert
 import com.local.tasknotescompanion.domain.ReminderSpec
+import com.local.tasknotescompanion.domain.RecurrenceSpec
 import com.local.tasknotescompanion.domain.TaskRecord
 import com.local.tasknotescompanion.domain.TaskFrontmatter
 import com.local.tasknotescompanion.quickadd.QuickAddDraft
@@ -92,20 +93,22 @@ class VaultRepository(
             projects = draft.projects.distinct(),
             contexts = draft.contexts.distinct(),
             reminders = taskReminders,
-            recurrence = null,
+            recurrence = draft.recurrenceRule?.let { RecurrenceSpec(rrule = it) },
             completedDate = null,
             modifiedAt = System.currentTimeMillis(),
             frontmatter = TaskFrontmatter(
-                mapOf(
-                    config.titleField to title,
-                    config.statusField to config.openStatus,
-                    config.priorityField to (draft.priority ?: "none"),
-                    config.createdField to now.toString(),
-                    "timeEstimate" to (draft.timeEstimateMinutes ?: 0),
-                    "taskSourceType" to "taskNotes",
-                    "created" to nowMinute,
-                    "updated" to nowMinute,
-                ),
+                buildMap {
+                    put(config.titleField, title)
+                    put(config.statusField, config.openStatus)
+                    put(config.priorityField, draft.priority ?: "none")
+                    put(config.createdField, now.toString())
+                    put("timeEstimate", draft.timeEstimateMinutes ?: 0)
+                    put("taskSourceType", "taskNotes")
+                    put("created", nowMinute)
+                    put("updated", nowMinute)
+                    draft.recurrenceRule?.let { put(config.recurrenceField, it) }
+                    draft.recurrenceAnchor?.let { put("recurrence_anchor", it) }
+                },
             ),
         )
         atomicWrite(file, parser.render(task, config))
