@@ -103,6 +103,19 @@ class QuickAddParser(
 
         var singleDate: LocalDate? = null
         if (parsedRange == null) {
+            val relativeDateMatch = RelativeDateRegex.findAll(text)
+                .firstOrNull { match -> removals.none { it.intersects(match.range) } }
+                ?: BareRelativeDateRegex.find(text)
+                    ?.takeIf { match -> removals.none { it.intersects(match.range) } }
+            relativeDateMatch?.let { match ->
+                parseRelativeDate(match)?.also {
+                    removals += match.range
+                    tokens += QuickAddToken(QuickAddTokenKind.DATE, match.value)
+                    singleDate = it
+                }
+            }
+        }
+        if (parsedRange == null && singleDate == null) {
             DatePatterns.firstNotNullOfOrNull { regex ->
                 regex.findAll(text).firstOrNull { match -> removals.none { it.intersects(match.range) } }?.let { match ->
                     parseDatePhrase(match.value, defaultMonth = null)?.also {
@@ -177,6 +190,21 @@ class QuickAddParser(
             return nextDate(today, month.value, day)
         }
         return null
+    }
+
+    private fun parseRelativeDate(match: MatchResult): LocalDate? {
+        val today = todayProvider()
+        val amount = when (match.groupValues[1].lowercase()) {
+            "a", "an" -> 1L
+            else -> match.groupValues[1].toLongOrNull() ?: return null
+        }
+        return when (match.groupValues[2].lowercase()) {
+            "day", "days" -> today.plusDays(amount)
+            "week", "weeks" -> today.plusWeeks(amount)
+            "month", "months" -> today.plusMonths(amount)
+            "year", "years" -> today.plusYears(amount)
+            else -> null
+        }
     }
 
     private fun normalizeRangeEnd(start: LocalDate, end: LocalDate): LocalDate {
@@ -277,6 +305,8 @@ class QuickAddParser(
         val WindowIntervalRegex = Regex("""(?i)\bevery\s+(\d+)\s+minutes?\b""")
         val WindowRegex = Regex("""(?i)(\d{1,2}(?:(?::|\s+)\d{2})?\s*(?:am|pm))\s+and\s+(\d{1,2}(?:(?::|\s+)\d{2})?\s*(?:am|pm))""")
         val RemindMeRegex = Regex("""(?i)\bremind\s+me\s+to\s+(.+?)\s*$""")
+        val RelativeDateRegex = Regex("""(?i)\bin\s+(\d+|a|an)\s+(days?|weeks?|months?|years?)\b""")
+        val BareRelativeDateRegex = Regex("""(?i)^\s*(\d+|a|an)\s+(days?|weeks?|months?|years?)\b""")
         val RangeRegex = Regex("""(?i)\b(?:from\s+)?([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}/\d{1,2}|\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?|today|tomorrow)\s*(?:to|-)\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+|\d{1,2}/\d{1,2}|\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?|today|tomorrow)\b""")
         val DatePatterns = listOf(
             Regex("""(?i)\b\d{4}-\d{2}-\d{2}\b"""),

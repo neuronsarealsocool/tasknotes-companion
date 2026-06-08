@@ -128,6 +128,41 @@ class QuickAddParserTest {
     }
 
     @Test
+    fun parsesRelativeMonthDate() {
+        val draft = parser.parse("in 6 months, take out the trash")
+
+        assertEquals("in 6 months, take out the trash", draft.title)
+        assertEquals(LocalDate.parse("2026-11-16"), draft.scheduled)
+        assertNull(draft.scheduledTime)
+        assertNull(draft.due)
+    }
+
+    @Test
+    fun parsesLeadingBareRelativeMonthDate() {
+        val draft = parser.parse("6 months, take out the trash")
+
+        assertEquals("6 months, take out the trash", draft.title)
+        assertEquals(LocalDate.parse("2026-11-16"), draft.scheduled)
+        assertNull(draft.due)
+    }
+
+    @Test
+    fun parsesRelativeDateWithTime() {
+        val draft = parser.parse("in 2 weeks at 4 30 pm call Sam")
+
+        assertEquals(LocalDate.parse("2026-05-30"), draft.scheduled)
+        assertEquals(LocalTime.parse("16:30"), draft.scheduledTime)
+    }
+
+    @Test
+    fun canTargetRelativeDateToDue() {
+        val draft = parser.parse("in a year renew passport", QuickAddDateTarget.DUE)
+
+        assertNull(draft.scheduled)
+        assertEquals(LocalDate.parse("2027-05-16"), draft.due)
+    }
+
+    @Test
     fun parsesDailyWindowRepeatReminder() {
         val windowParser = QuickAddParser(
             todayProvider = { LocalDate.parse("2026-06-04") },
