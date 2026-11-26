@@ -3,9 +3,16 @@ package com.local.tasknotescompanion.data
 import android.content.Context
 import com.local.tasknotescompanion.domain.DetectionMode
 import com.local.tasknotescompanion.domain.TaskMappingConfig
+import com.local.tasknotescompanion.tasknotes.VaultLocation
+import java.io.File
 
 class TaskMappingStore(context: Context) {
     private val prefs = context.getSharedPreferences("tasknotes_settings", Context.MODE_PRIVATE)
+
+    init {
+        val selected = prefs.getString("vaultPath", "").orEmpty()
+        if (selected.isNotBlank()) normalizeVaultPath(selected)
+    }
 
     fun load(): TaskMappingConfig = TaskMappingConfig(
         detectionMode = DetectionMode.valueOf(prefs.getString("detectionMode", DetectionMode.TAG.name)!!),
@@ -58,6 +65,18 @@ class TaskMappingStore(context: Context) {
     fun vaultPath(): String = prefs.getString("vaultPath", "")!!
 
     fun saveVaultPath(path: String) {
-        prefs.edit().putString("vaultPath", path).apply()
+        normalizeVaultPath(path)
+    }
+
+    private fun normalizeVaultPath(path: String) {
+        if (path.isBlank()) {
+            prefs.edit().putString("vaultPath", path).apply()
+            return
+        }
+        val location = VaultLocation.resolve(File(path), prefs.getString("taskFolder", "").orEmpty())
+        prefs.edit()
+            .putString("vaultPath", location.root.absolutePath)
+            .putString("taskFolder", location.taskFolder)
+            .apply()
     }
 }

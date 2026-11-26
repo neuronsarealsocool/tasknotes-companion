@@ -90,6 +90,7 @@ import com.local.tasknotescompanion.notifications.ReminderScheduler
 import com.local.tasknotescompanion.quickadd.QuickAddDateTarget
 import com.local.tasknotescompanion.quickadd.QuickAddDraft
 import com.local.tasknotescompanion.quickadd.QuickAddParser
+import com.local.tasknotescompanion.tasknotes.TaskRecurrence
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -187,7 +188,17 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
 
     fun setQuery(value: String) { query.value = value }
     fun setFilter(value: TaskFilter) { filter.value = value }
-    fun edit(task: TaskRecord?) { editing.value = task }
+    fun edit(task: TaskRecord?) {
+        if (task == null) {
+            editing.value = null
+        } else {
+            // Edit the stored series, never a projected calendar date.
+            viewModelScope.launch {
+                editing.value = app.database.taskDao().findById(task.id)?.toRecord()
+                    ?.copy(occurrenceDate = task.occurrenceDate) ?: task
+            }
+        }
+    }
     fun openSettings(open: Boolean) { settingsOpen.value = open }
 
     fun openTask(taskId: String?, taskPath: String?) {
@@ -205,7 +216,8 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
 
     fun saveVault(path: String) {
         app.mappingStore.saveVaultPath(path)
-        vaultPath.value = path
+        vaultPath.value = app.mappingStore.vaultPath()
+        config.value = app.mappingStore.load()
         scan()
     }
 
@@ -263,6 +275,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
         viewModelScope.launch {
             app.repository.complete(task)
             app.reminderScheduler.cancelTask(task.id)
+            app.database.taskDao().findById(task.id)?.toRecord()?.let { app.reminderScheduler.rescheduleTask(it) }
             editing.value = null
             message.value = "Completed ${task.title}"
         }
@@ -293,15 +306,17 @@ data class MainState(
 
 enum class TaskFilter { TODAY, OVERDUE, UPCOMING, ALL }
 
-private fun List<TaskRecord>.filterBy(filter: TaskFilter, query: String): List<TaskRecord> {
-    val now = LocalDateTime.now()
+internal fun List<TaskRecord>.filterBy(filter: TaskFilter, query: String, now: LocalDateTime = LocalDateTime.now()): List<TaskRecord> {
     val today = now.toLocalDate()
     return asSequence()
+        .map { TaskRecurrence().forDisplay(it, today) }
         .filter { task ->
-            val anchors = task.dateTimeAnchors()
+            val anchors = if (task.occurrenceDate != null) {
+                listOfNotNull(task.scheduled?.atTime(task.scheduledTime ?: DefaultTaskAnchorTime))
+            } else task.dateTimeAnchors()
             val isOverdue = anchors.any { it.isBefore(now) }
             when (filter) {
-                TaskFilter.TODAY -> !task.isDone && !isOverdue && anchors.any { it.toLocalDate() == today }
+                TaskFilter.TODAY -> !task.isDone && anchors.any { it.toLocalDate() == today }
                 TaskFilter.OVERDUE -> !task.isDone && isOverdue
                 TaskFilter.UPCOMING -> !task.isDone && !isOverdue && anchors.any { it.toLocalDate().isAfter(today) }
                 TaskFilter.ALL -> true
@@ -337,6 +352,10 @@ private fun TaskNotesAppUi(requestedTask: RequestedTask?, onTaskRequestConsumed:
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (app.mappingStore.vaultPath().isNotBlank() &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager())) {
+            viewModel.scan()
+        }
     }
 
     LaunchedEffect(requestedTask) {
@@ -393,7 +412,7 @@ private fun SetupScreen(path: String, onPick: () -> Unit, onAllFiles: () -> Unit
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
     val context = LocalContext.current
@@ -469,10 +488,11 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
                                     IconButton(onClick = { viewModel.complete(task) }) { Icon(Icons.Default.Check, "Complete") }
                                 }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 task.scheduled?.let { AssistChip(onClick = {}, label = { Text("Scheduled ${formatDateWithTime(it, task.scheduledTime)}") }) }
                                 task.due?.let { AssistChip(onClick = {}, label = { Text("Due ${formatDateWithTime(it, task.dueTime)}") }) }
                                 task.priority?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+                                task.recurrence?.let { AssistChip(onClick = {}, label = { Text("Repeats") }) }
                             }
                         }
                     }

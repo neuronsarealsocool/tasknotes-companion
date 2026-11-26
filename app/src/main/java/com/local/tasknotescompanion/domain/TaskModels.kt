@@ -141,6 +141,7 @@ data class TaskRecord(
     val completedDate: LocalDateTime?,
     val modifiedAt: Long,
     val frontmatter: TaskFrontmatter,
+    val occurrenceDate: LocalDate? = null,
 ) {
     val isDone: Boolean
         get() = completedDate != null || status.equals("done", ignoreCase = true)

@@ -28,8 +28,8 @@ interface TaskDao {
     @Upsert
     suspend fun upsert(task: TaskEntity)
 
-    @Query("DELETE FROM tasks WHERE path NOT IN (:paths)")
-    suspend fun deleteMissing(paths: List<String>)
+    @Query("DELETE FROM tasks WHERE id NOT IN (:ids)")
+    suspend fun deleteMissing(ids: List<String>)
 
     @Query("DELETE FROM tasks")
     suspend fun deleteAll()

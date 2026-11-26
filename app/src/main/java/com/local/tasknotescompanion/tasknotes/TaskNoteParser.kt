@@ -109,6 +109,9 @@ class TaskNoteParser {
     }
 
     fun complete(task: TaskRecord, config: TaskMappingConfig, completed: Boolean): TaskRecord {
+        if (completed) {
+            TaskRecurrence().complete(task, config, LocalDateTime.now())?.let { return it }
+        }
         return task.copy(
             status = if (completed) config.doneStatus else config.openStatus,
             completedDate = if (completed) LocalDateTime.now() else null,

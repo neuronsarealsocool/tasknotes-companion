@@ -36,6 +36,7 @@ class ReminderReceiver : BroadcastReceiver() {
                         if (task != null) {
                             app.repository.complete(task)
                             app.reminderScheduler.cancelTask(task.id)
+                            app.database.taskDao().findById(task.id)?.toRecord()?.let { app.reminderScheduler.rescheduleTask(it) }
                         }
                     }
                     ReminderScheduler.ACTION_SNOOZE_10 -> snooze(app, intent, 10, "Snoozed 10 minutes")

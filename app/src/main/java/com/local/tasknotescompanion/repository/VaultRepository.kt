@@ -30,12 +30,18 @@ class VaultRepository(
         if (!root.isDirectory) return@withContext 0
         val config = mappingStore.load()
         val tasks = root.walkTopDown()
+            .onEnter { it == root || !it.name.startsWith(".") }
             .filter { it.isFile && it.extension.equals("md", ignoreCase = true) }
-            .mapNotNull { parser.parse(it, root, config) }
+            .mapNotNull { file ->
+                runCatching { parser.parse(file, root, config) }.getOrElse {
+                    android.util.Log.w("VaultRepository", "Could not read task note: ${file.absolutePath}", it)
+                    null
+                }
+            }
             .toList()
         if (tasks.isNotEmpty()) {
             dao.upsertAll(tasks.map { it.toEntity() })
-            dao.deleteMissing(tasks.map { it.path })
+            dao.deleteMissing(tasks.map { it.id })
         } else {
             dao.deleteAll()
         }
@@ -46,7 +52,8 @@ class VaultRepository(
         val config = mappingStore.load()
         val root = File(mappingStore.vaultPath())
         val oldFile = File(task.path)
-        val targetFile = parser.uniqueSiblingFile(oldFile, task.title)
+        val originalTitle = parser.parse(oldFile, root, config)?.title
+        val targetFile = if (task.title == originalTitle) oldFile else parser.uniqueSiblingFile(oldFile, task.title)
         val taskForWrite = task.copy(
             id = targetFile.relativeTo(root).path.replace('\\', '/'),
             path = targetFile.absolutePath,
@@ -126,7 +133,8 @@ class VaultRepository(
 
     suspend fun complete(task: TaskRecord) = withContext(Dispatchers.IO) {
         val config = mappingStore.load()
-        val completed = parser.complete(task, config, true)
+        val series = dao.findById(task.id)?.toRecord() ?: task
+        val completed = parser.complete(series.copy(occurrenceDate = task.occurrenceDate), config, true)
         save(completed)
         parser.nextOccurrence(completed)?.let { next ->
             val root = File(mappingStore.vaultPath())
