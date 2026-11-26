@@ -685,14 +685,6 @@ private fun QuickAddDialog(
                     }
                     AssistChip(onClick = {}, label = { Text("Task File") })
                 }
-                QuickAddRecurrenceSection(
-                    recurrenceMode = recurrenceMode,
-                    onRecurrenceMode = { recurrenceMode = it },
-                    recurrenceDays = recurrenceDays,
-                    onRecurrenceDays = { recurrenceDays = it },
-                    recurrenceBaseDate = recurrenceBaseDate,
-                    recurrenceSelection = recurrenceSelection,
-                )
                 Text("Reminder overlay", style = MaterialTheme.typography.labelLarge)
                 OutlinedTextField(
                     value = alertNote,
@@ -734,6 +726,14 @@ private fun QuickAddDialog(
                     TextButton(onClick = { alertVideo = null }) { Text("Remove video") }
                     TextButton(onClick = { alertAudio = null }) { Text("Remove audio") }
                 }
+                QuickAddRecurrenceSection(
+                    recurrenceMode = recurrenceMode,
+                    onRecurrenceMode = { recurrenceMode = it },
+                    recurrenceDays = recurrenceDays,
+                    onRecurrenceDays = { recurrenceDays = it },
+                    recurrenceBaseDate = recurrenceBaseDate,
+                    recurrenceSelection = recurrenceSelection,
+                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
