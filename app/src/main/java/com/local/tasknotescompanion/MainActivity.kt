@@ -17,6 +17,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,6 +67,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -489,6 +492,7 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuickAddDialog(
     vaultPath: String,
@@ -716,15 +720,19 @@ private fun QuickAddDialog(
                 alertAudio?.let {
                     Text("Audio: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     FilterChip(
                         selected = alertAudioLoop,
                         onClick = { alertAudioLoop = !alertAudioLoop },
                         label = { Text("Loop audio") },
                     )
-                    TextButton(onClick = { alertImage = null }) { Text("Remove photo") }
-                    TextButton(onClick = { alertVideo = null }) { Text("Remove video") }
-                    TextButton(onClick = { alertAudio = null }) { Text("Remove audio") }
+                    TextButton(onClick = { alertImage = null }) { Text("Remove photo", maxLines = 1) }
+                    TextButton(onClick = { alertVideo = null }) { Text("Remove video", maxLines = 1) }
+                    TextButton(onClick = { alertAudio = null }) { Text("Remove audio", maxLines = 1) }
                 }
                 QuickAddRecurrenceSection(
                     recurrenceMode = recurrenceMode,
@@ -734,9 +742,13 @@ private fun QuickAddDialog(
                     recurrenceBaseDate = recurrenceBaseDate,
                     recurrenceSelection = recurrenceSelection,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text("Cancel", maxLines = 1)
                     }
                     OutlinedButton(
                         onClick = { onCreate(finalDraft, true) },
@@ -744,16 +756,15 @@ private fun QuickAddDialog(
                     ) {
                         Icon(Icons.Default.Edit, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Edit")
+                        Text("Edit", maxLines = 1)
                     }
-                    Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = { onCreate(finalDraft, false) },
                         enabled = finalDraft.title.isNotBlank(),
                     ) {
                         Icon(Icons.Default.Add, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Create")
+                        Text("Create", maxLines = 1)
                     }
                 }
             }
