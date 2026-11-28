@@ -2,6 +2,8 @@ package com.local.tasknotescompanion.repository
 
 import com.local.tasknotescompanion.data.TaskDao
 import com.local.tasknotescompanion.data.TaskMappingStore
+import com.local.tasknotescompanion.data.TaskEntity
+import com.local.tasknotescompanion.data.readCachedTask
 import com.local.tasknotescompanion.data.toEntity
 import com.local.tasknotescompanion.data.toRecord
 import com.local.tasknotescompanion.domain.ReminderAlert
@@ -14,6 +16,7 @@ import com.local.tasknotescompanion.tasknotes.TaskNoteParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.OffsetDateTime
@@ -23,7 +26,27 @@ class VaultRepository(
     private val mappingStore: TaskMappingStore,
     private val parser: TaskNoteParser = TaskNoteParser(),
 ) {
-    fun observeTasks(): Flow<List<TaskRecord>> = dao.observeAll().map { rows -> rows.map { it.toRecord() } }
+    fun observeTasks(): Flow<List<TaskRecord>> = dao.observeAll()
+        .map { rows -> rows.mapNotNull { readTask(it) } }
+        .flowOn(Dispatchers.IO)
+
+    suspend fun findTask(id: String?, path: String?): TaskRecord? {
+        val row = id?.let { dao.findById(it) } ?: path?.let { dao.findByPath(it) } ?: return null
+        return withContext(Dispatchers.IO) { readTask(row) }
+    }
+
+    private suspend fun readTask(row: TaskEntity): TaskRecord? {
+        return try {
+            val result = readCachedTask(row, File(mappingStore.vaultPath()), mappingStore.load(), parser)
+            if (result.rebuilt) dao.upsert(result.task.toEntity())
+            result.task
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            android.util.Log.w("VaultRepository", "Could not rebuild cached task: ${row.path}", failure)
+            null
+        }
+    }
 
     suspend fun scanVault(): Int = withContext(Dispatchers.IO) {
         val root = File(mappingStore.vaultPath())

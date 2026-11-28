@@ -194,7 +194,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
         } else {
             // Edit the stored series, never a projected calendar date.
             viewModelScope.launch {
-                editing.value = app.database.taskDao().findById(task.id)?.toRecord()
+                editing.value = app.repository.findTask(task.id, task.path)
                     ?.copy(occurrenceDate = task.occurrenceDate) ?: task
             }
         }
@@ -203,8 +203,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
 
     fun openTask(taskId: String?, taskPath: String?) {
         viewModelScope.launch {
-            val task = taskId?.let { app.database.taskDao().findById(it) }?.toRecord()
-                ?: taskPath?.let { app.database.taskDao().findByPath(it) }?.toRecord()
+            val task = app.repository.findTask(taskId, taskPath)
             if (task != null) {
                 settingsOpen.value = false
                 editing.value = task
@@ -235,9 +234,17 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
 
     fun scan() {
         viewModelScope.launch {
-            val count = app.repository.scanVault()
-            app.reminderScheduler.rescheduleAll(app.database.taskDao().snapshot().map { it.toRecord() })
-            message.value = "Indexed $count task notes"
+            message.value = "Scanning vault..."
+            try {
+                val count = app.repository.scanVault()
+                app.reminderScheduler.rescheduleAll(app.database.taskDao().snapshot().map { it.toRecord() })
+                message.value = "Indexed $count task notes"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                android.util.Log.e("TaskNotesScan", "Vault scan failed", failure)
+                message.value = "Could not refresh the vault. Check file access and try Scan again."
+            }
         }
     }
 

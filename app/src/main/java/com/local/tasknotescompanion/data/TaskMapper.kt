@@ -17,8 +17,10 @@ import java.time.Duration
 import java.time.LocalTime
 import java.time.OffsetDateTime
 
-private val dump = Dump(DumpSettings.builder().setDefaultFlowStyle(org.snakeyaml.engine.v2.common.FlowStyle.BLOCK).build())
-private val load = Load(LoadSettings.builder().build())
+// SnakeYAML readers/writers carry mutable state. Never share them between cache
+// observation on the UI thread and background vault/notification workers.
+private val dump get() = Dump(DumpSettings.builder().setDefaultFlowStyle(org.snakeyaml.engine.v2.common.FlowStyle.BLOCK).build())
+private val load get() = Load(LoadSettings.builder().build())
 
 fun TaskRecord.toEntity(): TaskEntity {
     return TaskEntity(
@@ -137,7 +139,25 @@ private fun parseStoredReminders(value: String): List<ReminderSpec> {
     if (value.isBlank()) return emptyList()
     val yaml = load.loadFromString(value)
     if (yaml is Iterable<*>) {
-        return yaml.mapNotNull { parseReminderMap(it as? Map<*, *>) }
+        return yaml.map { entry ->
+            val map = requireNotNull(entry as? Map<*, *>) { "Invalid cached reminder" }
+            // Corrupt shared-writer output can make scalar fields reference an
+            // entire reminder (or themselves). Reject it and rebuild from disk.
+            listOf("id", "type", "description", "relatedTo", "offset", "dateTime", "absoluteTime", "repeatEvery", "repeatUntil").forEach { field ->
+                require(map[field] == null || map[field] is String) { "Invalid cached reminder $field" }
+            }
+            val alert = map["alert"]
+            require(alert == null || alert is Map<*, *>) { "Invalid cached reminder alert" }
+            (alert as? Map<*, *>)?.let {
+                listOf("style", "note", "image", "video", "audio", "audioUntil").forEach { field ->
+                    require(it[field] == null || it[field] is String) { "Invalid cached alert $field" }
+                }
+                listOf("audioLoop", "allowOverlay").forEach { field ->
+                    require(it[field] == null || it[field] is Boolean) { "Invalid cached alert $field" }
+                }
+            }
+            requireNotNull(parseReminderMap(map)) { "Invalid cached reminder values" }
+        }
     }
     return value.lines().filter { it.isNotBlank() }.mapNotNull { line ->
         val parts = line.split("|", limit = 2)
@@ -241,7 +261,7 @@ private fun sanitizeYamlMap(map: Map<*, *>, seen: MutableSet<Int> = mutableSetOf
     return map.entries.mapNotNull { entry ->
         val value = sanitizeYamlValue(entry.value, seen) ?: return@mapNotNull null
         entry.key.toString() to value
-    }.toMap()
+    }.toMap(LinkedHashMap())
         .also { seen.remove(identity) }
 }
 

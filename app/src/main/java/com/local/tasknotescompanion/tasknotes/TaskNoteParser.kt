@@ -24,8 +24,8 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class TaskNoteParser {
-    private val load = Load(LoadSettings.builder().build())
-    private val dump = Dump(DumpSettings.builder().setDefaultFlowStyle(FlowStyle.BLOCK).build())
+    private val load get() = Load(LoadSettings.builder().build())
+    private val dump get() = Dump(DumpSettings.builder().setDefaultFlowStyle(FlowStyle.BLOCK).build())
 
     fun parse(file: File, root: File, config: TaskMappingConfig): TaskRecord? {
         val text = file.readText()
@@ -83,7 +83,7 @@ class TaskNoteParser {
         updated[config.modifiedField] = now.toString()
         updated["updated"] = now.toLocalDateTime().withSecond(0).withNano(0).toString()
 
-        return "---\n${dump.dumpToString(updated).trim()}\n---\n\n${task.body.trimStart()}"
+        return "---\n${dump.dumpToString(sanitizeYamlMap(updated)).trim()}\n---\n\n${task.body.trimStart()}"
     }
 
     fun createNewFile(root: File, config: TaskMappingConfig, title: String): File {
@@ -161,7 +161,7 @@ class TaskNoteParser {
         return map.entries.mapNotNull { entry ->
             val value = sanitizeYamlValue(entry.value, seen) ?: return@mapNotNull null
             entry.key.toString() to value
-        }.toMap()
+        }.toMap(LinkedHashMap())
             .also { seen.remove(identity) }
     }
 
