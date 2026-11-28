@@ -27,6 +27,7 @@ import java.io.File
 
 class RichReminderActivity : ComponentActivity() {
     private var sourceIntent: Intent? = null
+    private var syncWatcher: ReminderSyncWatcher? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +51,8 @@ class RichReminderActivity : ComponentActivity() {
     }
 
     private fun render(intent: Intent) {
+        syncWatcher?.stop()
+        syncWatcher = ReminderSyncWatcher(this, intent) { dismiss(syncToDesktop = false) }.also { it.start() }
         val title = intent.getStringExtra(ReminderScheduler.EXTRA_TASK_TITLE).orEmpty().ifBlank { "Task reminder" }
         val note = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_NOTE)
             ?: intent.getStringExtra(ReminderScheduler.EXTRA_DESCRIPTION)
@@ -273,6 +276,11 @@ class RichReminderActivity : ComponentActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    override fun onDestroy() {
+        syncWatcher?.stop()
+        super.onDestroy()
     }
 
     companion object {

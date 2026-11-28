@@ -38,9 +38,16 @@ class VaultRepository(
         .map { rows -> rows.mapNotNull { readTask(it) } }
         .flowOn(Dispatchers.IO)
 
-    suspend fun findTask(id: String?, path: String?): TaskRecord? {
+    suspend fun findTask(id: String?, path: String?, refreshFromDisk: Boolean = false): TaskRecord? {
         val row = id?.let { dao.findById(it) } ?: path?.let { dao.findByPath(it) } ?: return null
-        return withContext(Dispatchers.IO) { readTask(row) }
+        return withContext(Dispatchers.IO) {
+            if (!refreshFromDisk) return@withContext readTask(row)
+            val file = File(row.path)
+            if (!file.isFile) return@withContext null
+            val latest = parser.parse(file, File(mappingStore.vaultPath()), mappingStore.load())
+            if (latest != null && latest.modifiedAt != row.modifiedAt) dao.upsert(latest.toEntity())
+            latest
+        }
     }
 
     private suspend fun readTask(row: TaskEntity): TaskRecord? {

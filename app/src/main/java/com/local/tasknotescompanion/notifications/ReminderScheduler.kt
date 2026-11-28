@@ -23,6 +23,7 @@ import com.local.tasknotescompanion.data.TaskDao
 import com.local.tasknotescompanion.data.toRecord
 import com.local.tasknotescompanion.domain.ResolvedReminder
 import com.local.tasknotescompanion.domain.alarmAlert
+import com.local.tasknotescompanion.domain.reminderDismissedThrough
 import com.local.tasknotescompanion.domain.TaskRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,8 +50,8 @@ class ReminderScheduler(
         cancelTask(task.id)
         val prefs = preferencesStore.load()
         val rows = resolver.resolve(task, prefs)
-            .mapNotNull { it.nextRepeatOccurrenceIfNeeded() }
-            .filter { it.isSchedulable() }
+            .mapNotNull { it.nextRepeatOccurrenceIfNeeded(dismissedThrough = task.reminderDismissedThrough) }
+            .filter { it.isSchedulable() && it.triggerAt.toMillis() > task.reminderDismissedThrough }
             .map { it.toEntity("task") }
         scheduledDao.insertAll(rows)
         rows.forEach(::scheduleRow)
@@ -441,14 +442,14 @@ class ReminderScheduler(
         return File(mappingStore.vaultPath(), value).absolutePath
     }
 
-    private fun ResolvedReminder.nextRepeatOccurrenceIfNeeded(now: LocalDateTime = LocalDateTime.now()): ResolvedReminder? {
-        if (isSchedulable(now)) return this
+    private fun ResolvedReminder.nextRepeatOccurrenceIfNeeded(now: LocalDateTime = LocalDateTime.now(), dismissedThrough: Long = 0L): ResolvedReminder? {
+        if (isSchedulable(now) && triggerAt.toMillis() > dismissedThrough) return this
         val repeat = repeatEvery ?: return this
         if (!repeatUntilCompleted || repeat.isZero || repeat.isNegative) return this
         val next = nextRepeatDateTime(
             deliveredAt = triggerAt,
             repeatEvery = repeat,
-            now = now,
+            now = maxOf(now, LocalDateTime.ofInstant(Instant.ofEpochMilli(dismissedThrough), ZoneId.systemDefault())),
             repeatWindows = raw.repeatWindowsValue(),
         )
         return copy(triggerAt = next)

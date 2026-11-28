@@ -34,6 +34,7 @@ class RichReminderAudioService : Service() {
     private var player: MediaPlayer? = null
     private var overlayView: View? = null
     private var overlayIntent: Intent? = null
+    private var syncWatcher: ReminderSyncWatcher? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -80,6 +81,8 @@ class RichReminderAudioService : Service() {
                 .build(),
         )
         val showedOverlay = showOverlayIfAllowed(intent)
+        syncWatcher?.stop()
+        syncWatcher = ReminderSyncWatcher(this, intent) { dismissOverlayReminder(syncToDesktop = false) }.also { it.start() }
         if (!showedOverlay) {
             val notification = NotificationCompat.Builder(this, ReminderScheduler.RICH_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -340,6 +343,8 @@ class RichReminderAudioService : Service() {
     }
 
     private fun stopPlayback() {
+        syncWatcher?.stop()
+        syncWatcher = null
         removeOverlay()
         releasePlayer()
         stopForeground(STOP_FOREGROUND_REMOVE)

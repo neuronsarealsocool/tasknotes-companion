@@ -13,3 +13,6 @@ fun TaskRecord.withReminderDismissedThrough(through: Long): TaskRecord {
 
 fun TaskRecord.dismissReminders(nowMillis: Long, triggerAtMillis: Long = 0L): TaskRecord =
     withReminderDismissedThrough(maxOf(nowMillis, triggerAtMillis))
+
+fun TaskRecord.isReminderDeliveryDismissed(triggerAtMillis: Long): Boolean =
+    isDone || (triggerAtMillis > 0L && triggerAtMillis <= reminderDismissedThrough)

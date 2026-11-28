@@ -41,4 +41,12 @@ class ReminderDismissalTest {
         assertEquals("preserve", saved.frontmatter.raw["custom"])
         assertTrue(saved.body.contains("Keep body"))
     }
+
+    @Test fun remoteDismissalClosesCurrentDeliveryButNotTheNextOne() = withTask { task, _, _ ->
+        val dismissed = task.dismissReminders(1000)
+        assertTrue(dismissed.isReminderDeliveryDismissed(1000))
+        assertFalse(dismissed.isReminderDeliveryDismissed(1001))
+        assertFalse(task.isReminderDeliveryDismissed(1000))
+        assertTrue(task.copy(status = "done").isReminderDeliveryDismissed(1001))
+    }
 }
