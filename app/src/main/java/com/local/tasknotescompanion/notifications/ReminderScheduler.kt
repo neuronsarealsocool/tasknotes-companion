@@ -215,7 +215,11 @@ class ReminderScheduler(
             .setNumber(count)
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(DAILY_SUMMARY_ID, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(DAILY_SUMMARY_ID, notification)
+        } catch (denied: SecurityException) {
+            Log.w(TAG, "Notification permission was revoked before posting", denied)
+        }
     }
 
     private fun showTaskNotification(row: ScheduledNotificationEntity) {
@@ -278,7 +282,11 @@ class ReminderScheduler(
                 }
             }
             .build()
-        NotificationManagerCompat.from(context).notify(row.id.hashCode(), notification)
+        try {
+            NotificationManagerCompat.from(context).notify(row.id.hashCode(), notification)
+        } catch (denied: SecurityException) {
+            Log.w(TAG, "Notification permission was revoked before posting", denied)
+        }
     }
 
     private fun showRichReminder(row: ScheduledNotificationEntity) {

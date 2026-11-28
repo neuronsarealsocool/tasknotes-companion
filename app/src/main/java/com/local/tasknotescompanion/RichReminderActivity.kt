@@ -17,6 +17,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import com.local.tasknotescompanion.notifications.ReminderReceiver
 import com.local.tasknotescompanion.notifications.ReminderScheduler
@@ -29,6 +30,9 @@ class RichReminderActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { dismiss() }
+        })
         showWhenLockedAndTurnScreenOn()
         sourceIntent = intent
         handleDeliveredReminder(intent)
@@ -43,10 +47,6 @@ class RichReminderActivity : ComponentActivity() {
         handleDeliveredReminder(intent)
         startReminderAudio(intent)
         render(intent)
-    }
-
-    override fun onBackPressed() {
-        dismiss()
     }
 
     private fun render(intent: Intent) {

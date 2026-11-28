@@ -22,6 +22,8 @@ app/build/outputs/apk/debug/app-debug.apk
 - Cache scanned tasks in Room while keeping Markdown files authoritative.
 - List today, overdue, upcoming, and all tasks.
 - Search, create, edit, save, and complete TaskNotes.
+- Choose priorities in Quick Add and Edit Task, with colors on task cards.
+- Read configured priorities from the vault TaskNotes settings and add custom names/colors. Custom definitions are saved on this device for the selected vault; task priority values are written to the standard Markdown frontmatter.
 - Preserve unknown YAML frontmatter fields while updating app-managed fields.
 - Schedule local reminder notifications from reminder metadata.
 - Complete tasks from notifications.

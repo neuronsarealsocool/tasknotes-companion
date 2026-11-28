@@ -78,6 +78,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.local.tasknotescompanion.data.TaskPriorityStore
+import com.local.tasknotescompanion.domain.TaskPriority
+import com.local.tasknotescompanion.domain.DefaultTaskPriorities
+import com.local.tasknotescompanion.domain.createCustomPriority
+import com.local.tasknotescompanion.domain.priorityForValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.local.tasknotescompanion.data.toRecord
 import com.local.tasknotescompanion.domain.DetectionMode
 import com.local.tasknotescompanion.domain.NotificationPreferences
@@ -159,6 +166,28 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
     private val notificationPreferences = MutableStateFlow(app.notificationPreferencesStore.load())
     private val vaultPath = MutableStateFlow(app.mappingStore.vaultPath())
     private val message = MutableStateFlow("")
+    private val priorityStore = TaskPriorityStore(app)
+    private val priorities = MutableStateFlow(DefaultTaskPriorities)
+    private var priorityRevision = 0
+
+    init { refreshPriorities() }
+
+    private fun refreshPriorities() {
+        viewModelScope.launch {
+            val path = vaultPath.value
+            val revision = priorityRevision
+            val loaded = withContext(Dispatchers.IO) { priorityStore.load(path) }
+            if (path == vaultPath.value && revision == priorityRevision) priorities.value = loaded
+        }
+    }
+
+    fun addPriority(name: String, color: String): TaskPriority {
+        val priority = createCustomPriority(name, color, priorities.value)
+        priorityStore.add(vaultPath.value, priority)
+        priorityRevision++
+        priorities.value = (priorities.value + priority).sortedByDescending { it.weight }
+        return priority
+    }
     private val indexedTasks = app.repository.observeTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -172,11 +201,14 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
         notificationPreferences,
         vaultPath,
         message,
+        priorities,
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val tasks = values[0] as List<TaskRecord>
         val q = values[1] as String
         val activeFilter = values[2] as TaskFilter
+        @Suppress("UNCHECKED_CAST")
+        val availablePriorities = values[9] as List<TaskPriority>
         MainState(
             tasks = tasks.filterBy(activeFilter, q),
             allCount = tasks.size,
@@ -188,6 +220,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
             notificationPreferences = values[6] as NotificationPreferences,
             vaultPath = values[7] as String,
             message = values[8] as String,
+            priorities = availablePriorities,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MainState())
 
@@ -228,6 +261,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
         app.mappingStore.saveVaultPath(path)
         vaultPath.value = app.mappingStore.vaultPath()
         config.value = app.mappingStore.load()
+        refreshPriorities()
         scan()
     }
 
@@ -248,6 +282,7 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
             message.value = "Scanning vault..."
             try {
                 val count = app.repository.scanVault()
+                refreshPriorities()
                 app.reminderScheduler.rescheduleAll(app.database.taskDao().snapshot().map { it.toRecord() })
                 message.value = "Indexed $count task notes"
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -320,6 +355,7 @@ data class MainState(
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val vaultPath: String = "",
     val message: String = "",
+    val priorities: List<TaskPriority> = DefaultTaskPriorities,
 )
 
 enum class TaskFilter { TODAY, OVERDUE, UPCOMING, ALL }
@@ -385,7 +421,11 @@ private fun TaskNotesAppUi(requestedTask: RequestedTask?, onTaskRequestConsumed:
 
     when {
         state.settingsOpen -> SettingsScreen(state, viewModel::saveConfig, viewModel::saveNotificationPreferences, { viewModel.openSettings(false) })
-        state.editing != null -> EditorScreen(state.editing, state.config, state.vaultPath, viewModel::saveTask, viewModel::complete, viewModel::delete) { viewModel.edit(null) }
+        state.editing != null -> EditorScreen(
+            task = state.editing, config = state.config, vaultPath = state.vaultPath,
+            priorities = state.priorities, onCreatePriority = viewModel::addPriority,
+            onSave = viewModel::saveTask, onComplete = viewModel::complete, onDelete = viewModel::delete,
+        ) { viewModel.edit(null) }
         state.vaultPath.isBlank() -> SetupScreen(
             path = state.vaultPath,
             onPick = { folderLauncher.launch(null) },
@@ -509,7 +549,10 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 task.scheduled?.let { AssistChip(onClick = {}, label = { Text("Scheduled ${formatDateWithTime(it, task.scheduledTime)}") }) }
                                 task.due?.let { AssistChip(onClick = {}, label = { Text("Due ${formatDateWithTime(it, task.dueTime)}") }) }
-                                task.priority?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+                                task.priority?.let { value ->
+                                    val priority = priorityForValue(state.priorities, value)
+                                    AssistChip(onClick = {}, label = { Text(priority.label) }, leadingIcon = { PriorityDot(priority.color) })
+                                }
                                 task.recurrence?.let { AssistChip(onClick = {}, label = { Text("Repeats") }) }
                             }
                         }
@@ -521,6 +564,8 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
     if (quickAddOpen) {
         QuickAddDialog(
             vaultPath = state.vaultPath,
+            priorities = state.priorities,
+            onCreatePriority = viewModel::addPriority,
             onDismiss = { quickAddOpen = false },
             onCreate = { draft, openEditor ->
                 viewModel.createQuickTask(draft, openEditor)
@@ -534,6 +579,8 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
 @Composable
 private fun QuickAddDialog(
     vaultPath: String,
+    priorities: List<TaskPriority>,
+    onCreatePriority: (String, String) -> TaskPriority,
     onDismiss: () -> Unit,
     onCreate: (QuickAddDraft, Boolean) -> Unit,
 ) {
@@ -549,6 +596,7 @@ private fun QuickAddDialog(
     var dateRemoved by remember { mutableStateOf(false) }
     var timeRemoved by remember { mutableStateOf(false) }
     var priorityRemoved by remember { mutableStateOf(false) }
+    var priorityOverride by rememberSaveable { mutableStateOf<String?>(null) }
     var alertNote by rememberSaveable { mutableStateOf("") }
     var alertImage by rememberSaveable { mutableStateOf<String?>(null) }
     var alertVideo by rememberSaveable { mutableStateOf<String?>(null) }
@@ -621,7 +669,7 @@ private fun QuickAddDialog(
         tags = parsed.tags.filterNot { it in removedTags },
         projects = parsed.projects.filterNot { it in removedProjects },
         contexts = parsed.contexts.filterNot { it in removedContexts },
-        priority = parsed.priority.takeUnless { priorityRemoved },
+        priority = priorityOverride ?: parsed.priority.takeUnless { priorityRemoved },
         alert = ReminderAlert(
             style = "fullscreen",
             note = alertNote.ifBlank { null },
@@ -660,6 +708,12 @@ private fun QuickAddDialog(
                     onValueChange = { title = it },
                     label = { Text("Task title") },
                     modifier = Modifier.fillMaxWidth(),
+                )
+                PriorityDropdown(
+                    value = finalDraft.priority,
+                    priorities = priorities,
+                    onSelect = { priorityOverride = it; priorityRemoved = false },
+                    onCreate = onCreatePriority,
                 )
                 if (hasSingleDate && !dateRemoved) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -717,12 +771,14 @@ private fun QuickAddDialog(
                             label = { Text("@$context x") },
                         )
                     }
-                    finalDraft.priority?.let { priority ->
+                    finalDraft.priority?.takeUnless { it == "none" }?.let { priority ->
                         AssistChip(
                             onClick = {
                                 priorityRemoved = true
+                                priorityOverride = "none"
                             },
-                            label = { Text("$priority priority x") },
+                            label = { Text("${priorityForValue(priorities, priority).label} priority x") },
+                            leadingIcon = { PriorityDot(priorityForValue(priorities, priority).color) },
                         )
                     }
                     AssistChip(onClick = {}, label = { Text("Task File") })
@@ -898,6 +954,8 @@ private fun EditorScreen(
     task: TaskRecord?,
     config: TaskMappingConfig,
     vaultPath: String,
+    priorities: List<TaskPriority>,
+    onCreatePriority: (String, String) -> TaskPriority,
     onSave: (TaskRecord) -> Unit,
     onComplete: (TaskRecord) -> Unit,
     onDelete: (TaskRecord) -> Unit,
@@ -958,7 +1016,9 @@ private fun EditorScreen(
         LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { OutlinedTextField(title, { title = it }, label = { Text(config.titleField) }, modifier = Modifier.fillMaxWidth()) }
             item { OutlinedTextField(status, { status = it }, label = { Text(config.statusField) }, modifier = Modifier.fillMaxWidth()) }
-            item { OutlinedTextField(priority, { priority = it }, label = { Text(config.priorityField) }, modifier = Modifier.fillMaxWidth()) }
+            item {
+                PriorityDropdown(priority, priorities, onSelect = { priority = it }, onCreate = onCreatePriority)
+            }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DateField(
