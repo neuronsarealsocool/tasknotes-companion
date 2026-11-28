@@ -27,27 +27,37 @@ class ReminderReceiver : BroadcastReceiver() {
             }
             return
         }
-        runBlocking(Dispatchers.IO) {
-            runCatching {
-                Log.i(TAG, "Received ${intent.action}")
-                when (intent.action) {
-                    ReminderScheduler.ACTION_COMPLETE -> {
-                        val task = intent.task(app)
-                        if (task != null) {
-                            app.repository.complete(task)
-                            app.reminderScheduler.cancelTask(task.id)
-                            app.database.taskDao().findById(task.id)?.toRecord()?.let { app.reminderScheduler.rescheduleTask(it) }
+        val pending = goAsync()
+        Thread {
+            try {
+                runBlocking(Dispatchers.IO) {
+                    runCatching {
+                        Log.i(TAG, "Received ${intent.action}")
+                        when (intent.action) {
+                            ReminderScheduler.ACTION_COMPLETE -> {
+                                val task = intent.task(app)
+                                if (task != null) {
+                                    app.repository.complete(task, intent.dismissedAt(), intent.getLongExtra(ReminderScheduler.EXTRA_TRIGGER_AT_MILLIS, 0L))
+                                    app.reminderScheduler.cancelTask(task.id)
+                                    app.database.taskDao().findById(task.id)?.toRecord()?.let { app.reminderScheduler.rescheduleTask(it) }
+                                }
+                            }
+                            ReminderScheduler.ACTION_DISMISS -> {
+                                intent.task(app)?.let { app.repository.dismissReminder(it, intent.dismissedAt(), intent.getLongExtra(ReminderScheduler.EXTRA_TRIGGER_AT_MILLIS, 0L)) }
+                            }
+                            ReminderScheduler.ACTION_SNOOZE_10 -> snooze(app, intent, 10, "Snoozed 10 minutes")
+                            ReminderScheduler.ACTION_SNOOZE_30 -> snooze(app, intent, 30, "Snoozed 30 minutes")
+                            ReminderScheduler.ACTION_SNOOZE_1H -> snooze(app, intent, 60, "Snoozed 1 hour")
+                            ReminderScheduler.ACTION_SNOOZE_TOMORROW -> snooze(app, intent, ReminderScheduler.TOMORROW_MINUTES, "Snoozed until tomorrow")
                         }
+                    }.onFailure {
+                        Log.e(TAG, "Reminder action failed", it)
                     }
-                    ReminderScheduler.ACTION_SNOOZE_10 -> snooze(app, intent, 10, "Snoozed 10 minutes")
-                    ReminderScheduler.ACTION_SNOOZE_30 -> snooze(app, intent, 30, "Snoozed 30 minutes")
-                    ReminderScheduler.ACTION_SNOOZE_1H -> snooze(app, intent, 60, "Snoozed 1 hour")
-                    ReminderScheduler.ACTION_SNOOZE_TOMORROW -> snooze(app, intent, ReminderScheduler.TOMORROW_MINUTES, "Snoozed until tomorrow")
                 }
-            }.onFailure {
-                Log.e(TAG, "Reminder action failed", it)
+            } finally {
+                pending.finish()
             }
-        }
+        }.start()
     }
 
     private suspend fun snooze(app: TaskNotesApp, intent: Intent, minutes: Long, label: String) {
@@ -55,10 +65,12 @@ class ReminderReceiver : BroadcastReceiver() {
         app.reminderScheduler.scheduleSnooze(task, minutes, label)
     }
 
-    private suspend fun Intent.task(app: TaskNotesApp) =
-        getStringExtra(ReminderScheduler.EXTRA_TASK_ID)
-            ?.let { app.database.taskDao().findById(it) }
-            ?.toRecord()
+    private fun Intent.dismissedAt(): Long = getLongExtra(ReminderScheduler.EXTRA_DISMISSED_AT_MILLIS, 0L)
+        .takeIf { it > 0L } ?: System.currentTimeMillis()
+
+    private suspend fun Intent.task(app: TaskNotesApp) = app.repository.findTask(
+        getStringExtra(ReminderScheduler.EXTRA_TASK_ID), getStringExtra(ReminderScheduler.EXTRA_TASK_PATH),
+    )
 
     private companion object {
         const val TAG = "TaskNotesReminder"

@@ -532,6 +532,8 @@ class ReminderScheduler(
         const val ACTION_SHOW = "com.local.tasknotescompanion.SHOW_REMINDER"
         const val ACTION_OPEN_TASK = "com.local.tasknotescompanion.OPEN_TASK"
         const val ACTION_COMPLETE = "com.local.tasknotescompanion.COMPLETE_TASK"
+        const val ACTION_DISMISS = "com.local.tasknotescompanion.DISMISS_REMINDER"
+        const val EXTRA_DISMISSED_AT_MILLIS = "dismissedAtMillis"
         const val ACTION_RICH_REMINDER = "com.local.tasknotescompanion.RICH_REMINDER"
         const val ACTION_SNOOZE_10 = "com.local.tasknotescompanion.SNOOZE_10"
         const val ACTION_SNOOZE_30 = "com.local.tasknotescompanion.SNOOZE_30"

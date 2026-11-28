@@ -227,19 +227,20 @@ class RichReminderActivity : ComponentActivity() {
 
     private fun snooze() {
         sendReminderAction(ReminderScheduler.ACTION_SNOOZE_10)
-        dismiss()
+        dismiss(syncToDesktop = false)
     }
 
     private fun complete() {
         sendReminderAction(ReminderScheduler.ACTION_COMPLETE)
-        dismiss()
+        dismiss(syncToDesktop = false)
     }
 
     private fun silence() {
         stopAudio()
     }
 
-    private fun dismiss() {
+    private fun dismiss(syncToDesktop: Boolean = true) {
+        if (syncToDesktop) sendReminderAction(ReminderScheduler.ACTION_DISMISS)
         cancelRichReminderNotification(sourceIntent)
         stopAudio()
         setResult(Activity.RESULT_OK)
@@ -253,9 +254,8 @@ class RichReminderActivity : ComponentActivity() {
     private fun sendReminderAction(action: String) {
         sendBroadcast(Intent(this, ReminderReceiver::class.java)
             .setAction(action)
-            .putExtra(ReminderScheduler.EXTRA_TASK_ID, sourceIntent?.getStringExtra(ReminderScheduler.EXTRA_TASK_ID))
-            .putExtra(ReminderScheduler.EXTRA_TASK_PATH, sourceIntent?.getStringExtra(ReminderScheduler.EXTRA_TASK_PATH))
-            .putExtra(ReminderScheduler.EXTRA_SCHEDULE_ID, sourceIntent?.getStringExtra(ReminderScheduler.EXTRA_SCHEDULE_ID)))
+            .putExtras(sourceIntent ?: Intent())
+            .putExtra(ReminderScheduler.EXTRA_DISMISSED_AT_MILLIS, System.currentTimeMillis()))
     }
 
     private fun showWhenLockedAndTurnScreenOn() {

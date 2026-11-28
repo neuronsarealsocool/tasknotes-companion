@@ -35,3 +35,5 @@ app/build/outputs/apk/debug/app-debug.apk
 This is built as a personal APK rather than a Play Store-ready app. It requests broad file access because Obsidian vaults are plain folders on device storage.
 
 Web addresses in reminder overlay titles and notification notes are clickable. Opening a link dismisses that overlay and stops its media without completing the task. Supports HTTP(S), www addresses, bare domains, and escaped dots.
+
+Opening a reminder link, Dismiss, and Complete sync a dismissal to TaskNotes desktop 4.14.6 or later through the task note in your synced vault. Matching desktop overlays close after sync arrives; future reminder times remain available.

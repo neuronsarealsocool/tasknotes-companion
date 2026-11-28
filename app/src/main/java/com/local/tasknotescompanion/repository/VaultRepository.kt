@@ -6,6 +6,9 @@ import com.local.tasknotescompanion.data.TaskEntity
 import com.local.tasknotescompanion.data.readCachedTask
 import com.local.tasknotescompanion.data.toEntity
 import com.local.tasknotescompanion.data.toRecord
+import com.local.tasknotescompanion.domain.dismissReminders
+import com.local.tasknotescompanion.domain.reminderDismissedThrough
+import com.local.tasknotescompanion.domain.withReminderDismissedThrough
 import com.local.tasknotescompanion.domain.PhoneOnlyAlarmField
 import com.local.tasknotescompanion.domain.ReminderAlert
 import com.local.tasknotescompanion.domain.ReminderSpec
@@ -18,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.OffsetDateTime
@@ -27,6 +32,8 @@ class VaultRepository(
     private val mappingStore: TaskMappingStore,
     private val parser: TaskNoteParser = TaskNoteParser(),
 ) {
+    private val writeMutex = Mutex()
+
     fun observeTasks(): Flow<List<TaskRecord>> = dao.observeAll()
         .map { rows -> rows.mapNotNull { readTask(it) } }
         .flowOn(Dispatchers.IO)
@@ -73,12 +80,17 @@ class VaultRepository(
     }
 
     suspend fun save(task: TaskRecord): TaskRecord = withContext(Dispatchers.IO) {
+        writeMutex.withLock { saveTask(task) }
+    }
+
+    private suspend fun saveTask(task: TaskRecord): TaskRecord {
         val config = mappingStore.load()
         val root = File(mappingStore.vaultPath())
         val oldFile = File(task.path)
-        val originalTitle = parser.parse(oldFile, root, config)?.title
+        val original = parser.parse(oldFile, root, config)
+        val originalTitle = original?.title
         val targetFile = if (task.title == originalTitle) oldFile else parser.uniqueSiblingFile(oldFile, task.title)
-        val taskForWrite = task.copy(
+        val taskForWrite = task.withReminderDismissedThrough(original?.reminderDismissedThrough ?: 0L).copy(
             id = targetFile.relativeTo(root).path.replace('\\', '/'),
             path = targetFile.absolutePath,
         )
@@ -89,7 +101,7 @@ class VaultRepository(
         }
         val parsed = parser.parse(targetFile, root, config)!!
         dao.upsert(parsed.toEntity())
-        parsed
+        return parsed
     }
 
     suspend fun create(title: String, reminders: List<ReminderSpec> = emptyList()): TaskRecord {
@@ -156,21 +168,32 @@ class VaultRepository(
         }
     }
 
-    suspend fun complete(task: TaskRecord) = withContext(Dispatchers.IO) {
-        val config = mappingStore.load()
-        val series = dao.findById(task.id)?.toRecord() ?: task
-        val completed = parser.complete(series.copy(occurrenceDate = task.occurrenceDate), config, true)
-        save(completed)
-        parser.nextOccurrence(completed)?.let { next ->
+    suspend fun dismissReminder(task: TaskRecord, nowMillis: Long, triggerAtMillis: Long = 0L) = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
             val root = File(mappingStore.vaultPath())
-            val nextFile = parser.createNewFile(root, config, next.title)
-            val nextTask = next.copy(
-                id = nextFile.relativeTo(root).path.replace('\\', '/'),
-                path = nextFile.absolutePath,
-                status = config.openStatus,
-            )
-            atomicWrite(nextFile, parser.render(nextTask, config))
-            parser.parse(nextFile, root, config)?.let { dao.upsert(it.toEntity()) }
+            val latest = parser.parse(File(task.path), root, mappingStore.load()) ?: return@withLock
+            saveTask(latest.dismissReminders(nowMillis, triggerAtMillis))
+        }
+    }
+
+    suspend fun complete(task: TaskRecord, nowMillis: Long = System.currentTimeMillis(), triggerAtMillis: Long = 0L) = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
+            val config = mappingStore.load()
+            val root = File(mappingStore.vaultPath())
+            val series = parser.parse(File(task.path), root, config) ?: dao.findById(task.id)?.toRecord() ?: task
+            val completed = parser.complete(series.copy(occurrenceDate = task.occurrenceDate), config, true)
+                .dismissReminders(nowMillis, triggerAtMillis)
+            saveTask(completed)
+            parser.nextOccurrence(completed)?.let { next ->
+                val nextFile = parser.createNewFile(root, config, next.title)
+                val nextTask = next.copy(
+                    id = nextFile.relativeTo(root).path.replace('\\', '/'),
+                    path = nextFile.absolutePath,
+                    status = config.openStatus,
+                )
+                atomicWrite(nextFile, parser.render(nextTask, config))
+                parser.parse(nextFile, root, config)?.let { dao.upsert(it.toEntity()) }
+            }
         }
     }
 

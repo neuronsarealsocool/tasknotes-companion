@@ -356,7 +356,7 @@ class RichReminderAudioService : Service() {
 
     private fun editTaskFromOverlay() {
         val source = overlayIntent
-        dismissOverlayReminder(stopAudio = true)
+        dismissOverlayReminder(syncToDesktop = false)
         startActivity(Intent(this, MainActivity::class.java)
             .setAction(ReminderScheduler.ACTION_OPEN_TASK)
             .putExtra(ReminderScheduler.EXTRA_TASK_ID, source?.getStringExtra(ReminderScheduler.EXTRA_TASK_ID))
@@ -366,15 +366,16 @@ class RichReminderAudioService : Service() {
 
     private fun snoozeFromOverlay() {
         sendReminderAction(ReminderScheduler.ACTION_SNOOZE_10)
-        dismissOverlayReminder()
+        dismissOverlayReminder(syncToDesktop = false)
     }
 
     private fun completeFromOverlay() {
         sendReminderAction(ReminderScheduler.ACTION_COMPLETE)
-        dismissOverlayReminder()
+        dismissOverlayReminder(syncToDesktop = false)
     }
 
-    private fun dismissOverlayReminder(stopAudio: Boolean = true) {
+    private fun dismissOverlayReminder(stopAudio: Boolean = true, syncToDesktop: Boolean = true) {
+        if (syncToDesktop) sendReminderAction(ReminderScheduler.ACTION_DISMISS)
         cancelRichReminderNotification(overlayIntent)
         removeOverlay()
         if (stopAudio) stopPlayback()
@@ -384,9 +385,8 @@ class RichReminderAudioService : Service() {
         val source = overlayIntent ?: return
         sendBroadcast(Intent(this, ReminderReceiver::class.java)
             .setAction(action)
-            .putExtra(ReminderScheduler.EXTRA_TASK_ID, source.getStringExtra(ReminderScheduler.EXTRA_TASK_ID))
-            .putExtra(ReminderScheduler.EXTRA_TASK_PATH, source.getStringExtra(ReminderScheduler.EXTRA_TASK_PATH))
-            .putExtra(ReminderScheduler.EXTRA_SCHEDULE_ID, source.getStringExtra(ReminderScheduler.EXTRA_SCHEDULE_ID)))
+            .putExtras(source)
+            .putExtra(ReminderScheduler.EXTRA_DISMISSED_AT_MILLIS, System.currentTimeMillis()))
     }
 
     private fun actionButton(label: String, action: () -> Unit): Button {
