@@ -33,3 +33,5 @@ app/build/outputs/apk/debug/app-debug.apk
 ## Notes
 
 This is built as a personal APK rather than a Play Store-ready app. It requests broad file access because Obsidian vaults are plain folders on device storage.
+
+Web addresses in reminder overlay titles and notification notes are clickable. Opening a link dismisses that overlay and stops its media without completing the task. Supports HTTP(S), www addresses, bare domains, and escaped dots.

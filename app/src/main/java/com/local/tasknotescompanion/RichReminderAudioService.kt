@@ -174,7 +174,7 @@ class RichReminderAudioService : Service() {
                     }
 
                     addView(TextView(context).apply {
-                        text = title
+                        setReminderWebLinks(title) { dismissOverlayReminder() }
                         textSize = 28f
                         setTextColor(0xFF111111.toInt())
                         gravity = Gravity.CENTER
@@ -188,7 +188,7 @@ class RichReminderAudioService : Service() {
 
                     if (note.isNotBlank()) {
                         addView(TextView(context).apply {
-                            text = note
+                            setReminderWebLinks(note) { dismissOverlayReminder() }
                             textSize = 20f
                             setTextColor(0xFF111111.toInt())
                             gravity = Gravity.CENTER
@@ -375,6 +375,7 @@ class RichReminderAudioService : Service() {
     }
 
     private fun dismissOverlayReminder(stopAudio: Boolean = true) {
+        cancelRichReminderNotification(overlayIntent)
         removeOverlay()
         if (stopAudio) stopPlayback()
     }

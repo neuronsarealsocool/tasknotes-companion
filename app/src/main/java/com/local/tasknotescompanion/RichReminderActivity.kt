@@ -106,7 +106,7 @@ class RichReminderActivity : ComponentActivity() {
                     }
 
                     addView(TextView(context).apply {
-                        text = title
+                        setReminderWebLinks(title) { dismiss() }
                         textSize = 28f
                         setTextColor(0xFF111111.toInt())
                         gravity = Gravity.CENTER
@@ -120,7 +120,7 @@ class RichReminderActivity : ComponentActivity() {
 
                     if (note.isNotBlank()) {
                         addView(TextView(context).apply {
-                            text = note
+                            setReminderWebLinks(note) { dismiss() }
                             textSize = 20f
                             setTextColor(0xFF111111.toInt())
                             gravity = Gravity.CENTER
@@ -240,6 +240,7 @@ class RichReminderActivity : ComponentActivity() {
     }
 
     private fun dismiss() {
+        cancelRichReminderNotification(sourceIntent)
         stopAudio()
         setResult(Activity.RESULT_OK)
         finish()
