@@ -86,6 +86,9 @@ import com.local.tasknotescompanion.domain.ReminderAnchor
 import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.TaskMappingConfig
 import com.local.tasknotescompanion.domain.TaskRecord
+import com.local.tasknotescompanion.domain.editorReminderOverlay
+import com.local.tasknotescompanion.domain.editSharedOverlay
+import com.local.tasknotescompanion.domain.withReminderOverlay
 import com.local.tasknotescompanion.notifications.ReminderScheduler
 import com.local.tasknotescompanion.quickadd.QuickAddDateTarget
 import com.local.tasknotescompanion.quickadd.QuickAddDraft
@@ -156,9 +159,11 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
     private val notificationPreferences = MutableStateFlow(app.notificationPreferencesStore.load())
     private val vaultPath = MutableStateFlow(app.mappingStore.vaultPath())
     private val message = MutableStateFlow("")
+    private val indexedTasks = app.repository.observeTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val state: StateFlow<MainState> = combine(
-        app.repository.observeTasks(),
+        indexedTasks,
         query,
         filter,
         editing,
@@ -193,9 +198,14 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
             editing.value = null
         } else {
             // Edit the stored series, never a projected calendar date.
-            viewModelScope.launch {
-                editing.value = app.repository.findTask(task.id, task.path)
-                    ?.copy(occurrenceDate = task.occurrenceDate) ?: task
+            val indexed = indexedTasks.value.firstOrNull { it.id == task.id }
+            if (indexed != null) {
+                editing.value = indexed.copy(occurrenceDate = task.occurrenceDate)
+            } else {
+                viewModelScope.launch {
+                    editing.value = app.repository.findTask(task.id, task.path)
+                        ?.copy(occurrenceDate = task.occurrenceDate) ?: task
+                }
             }
         }
     }
@@ -203,7 +213,8 @@ class MainViewModel(private val app: TaskNotesApp) : ViewModel() {
 
     fun openTask(taskId: String?, taskPath: String?) {
         viewModelScope.launch {
-            val task = app.repository.findTask(taskId, taskPath)
+            val task = indexedTasks.value.firstOrNull { it.id == taskId || (taskPath != null && it.path == taskPath) }
+                ?: app.repository.findTask(taskId, taskPath)
             if (task != null) {
                 settingsOpen.value = false
                 editing.value = task
@@ -913,6 +924,12 @@ private fun EditorScreen(
     var priority by remember(task.id) { mutableStateOf(task.priority.orEmpty()) }
     var tags by remember(task.id) { mutableStateOf(task.tags.joinToString(" ")) }
     var reminders by remember(task.id) { mutableStateOf(task.reminders) }
+    var overlay by remember(task.id) { mutableStateOf(task.editorReminderOverlay()) }
+    var overlayChanged by remember(task.id) { mutableStateOf(false) }
+    fun updateReminders(updated: List<ReminderSpec>) {
+        val existingIds = reminders.map { it.id }.toSet()
+        reminders = updated.map { if (it.id !in existingIds && it.alert == null) it.withAlert(overlay) else it }
+    }
 
     Scaffold(
         topBar = {
@@ -932,7 +949,7 @@ private fun EditorScreen(
                             scheduledTime = scheduledTime,
                             tags = tags.split(" ", ",").map { it.trim() }.filter { it.isNotBlank() },
                             reminders = reminders,
-                        ))
+                        ).let { if (overlayChanged) it.withReminderOverlay(overlay) else it })
                     }) { Icon(Icons.Default.Save, "Save") }
                 },
             )
@@ -1005,7 +1022,26 @@ private fun EditorScreen(
                 }
             }
             item { OutlinedTextField(tags, { tags = it }, label = { Text(config.tagsField) }, modifier = Modifier.fillMaxWidth()) }
-            item { ReminderEditor(reminders = reminders, vaultPath = vaultPath, onReminders = { reminders = it }) }
+            item(key = "task-overlay") {
+                EditorReminderOverlay(overlay, vaultPath, onChange = { next ->
+                    reminders = reminders.editSharedOverlay(overlay, next)
+                    overlay = next
+                    overlayChanged = true
+                })
+            }
+            item(key = "reminders-heading") { Text("Reminders", style = MaterialTheme.typography.titleMedium) }
+            if (reminders.isEmpty()) {
+                item { Text("No reminders", style = MaterialTheme.typography.bodySmall) }
+            }
+            items(reminders, key = { "reminder-${it.id}" }) { reminder ->
+                EditorReminderCard(
+                    reminder = reminder,
+                    vaultPath = vaultPath,
+                    onChange = { updated -> reminders = reminders.map { if (it.id == updated.id) updated else it } },
+                    onRemove = { reminders = reminders.filterNot { it.id == reminder.id } },
+                )
+            }
+            item(key = "add-reminders") { ReminderAddControls(reminders = reminders, onReminders = ::updateReminders) }
             item { OutlinedTextField(body, { body = it }, label = { Text("Markdown body") }, modifier = Modifier.fillMaxWidth(), minLines = 8) }
             item {
                 Button(onClick = { onComplete(task) }, modifier = Modifier.fillMaxWidth()) {
@@ -1027,145 +1063,43 @@ private fun EditorScreen(
 }
 
 @Composable
-private fun ReminderEditor(reminders: List<ReminderSpec>, vaultPath: String, onReminders: (List<ReminderSpec>) -> Unit) {
-    val context = LocalContext.current
-    var mediaTargetReminderId by rememberSaveable { mutableStateOf<String?>(null) }
-    var mediaTargetKind by rememberSaveable { mutableStateOf<String?>(null) }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val targetId = mediaTargetReminderId
-        if (uri != null && targetId != null) {
-            val relative = copyPickedMedia(context, vaultPath, uri, "image")
-            if (relative != null) {
-                onReminders(reminders.map { reminder ->
-                    if (reminder.id == targetId) reminder.withAlert(reminder.alertForEdit().copy(image = relative)) else reminder
-                })
-                Toast.makeText(context, "Photo added to reminder", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Could not copy photo into vault", Toast.LENGTH_LONG).show()
+private fun EditorReminderCard(
+    reminder: ReminderSpec,
+    vaultPath: String,
+    onChange: (ReminderSpec) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var customize by rememberSaveable(reminder.id) { mutableStateOf(false) }
+    Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(reminder.describe(), modifier = Modifier.weight(1f))
+                IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, "Remove reminder") }
+            }
+            TextButton(onClick = { customize = !customize }) {
+                Text(if (customize) "Hide overlay settings" else "Customize overlay")
+            }
+            if (customize) {
+                EditorReminderOverlay(
+                    alert = reminder.alertForEdit(),
+                    vaultPath = vaultPath,
+                    onChange = { onChange(reminder.withAlert(it)) },
+                    shared = false,
+                )
             }
         }
-        mediaTargetReminderId = null
-        mediaTargetKind = null
     }
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val targetId = mediaTargetReminderId
-        if (uri != null && targetId != null) {
-            val relative = copyPickedMedia(context, vaultPath, uri, "audio")
-            if (relative != null) {
-                onReminders(reminders.map { reminder ->
-                    if (reminder.id == targetId) reminder.withAlert(reminder.alertForEdit().copy(audio = relative)) else reminder
-                })
-                Toast.makeText(context, "Audio added to reminder", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Could not copy audio into vault", Toast.LENGTH_LONG).show()
-            }
-        }
-        mediaTargetReminderId = null
-        mediaTargetKind = null
-    }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val targetId = mediaTargetReminderId
-        if (uri != null && targetId != null) {
-            val relative = copyPickedMedia(context, vaultPath, uri, "video")
-            if (relative != null) {
-                onReminders(reminders.map { reminder ->
-                    if (reminder.id == targetId) reminder.withAlert(reminder.alertForEdit().copy(video = relative)) else reminder
-                })
-                Toast.makeText(context, "Video added to reminder", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Could not copy video into vault", Toast.LENGTH_LONG).show()
-            }
-        }
-        mediaTargetReminderId = null
-        mediaTargetKind = null
-    }
+}
+
+@Composable
+private fun ReminderAddControls(reminders: List<ReminderSpec>, onReminders: (List<ReminderSpec>) -> Unit) {
     var absoluteDate by remember { mutableStateOf(LocalDate.now()) }
     var absoluteTime by remember { mutableStateOf(LocalTime.now().plusHours(1).withSecond(0).withNano(0)) }
     var absoluteCalendarOpen by remember { mutableStateOf(false) }
     var absoluteVisibleMonth by remember { mutableStateOf(YearMonth.from(absoluteDate)) }
     var absoluteDescription by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Reminders", style = MaterialTheme.typography.titleMedium)
-        if (reminders.isEmpty()) {
-            Text("No reminders", style = MaterialTheme.typography.bodySmall)
-        }
-        reminders.forEach { reminder ->
-            Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(reminder.describe(), modifier = Modifier.weight(1f))
-                        IconButton(onClick = { onReminders(reminders.filterNot { it.id == reminder.id }) }) {
-                            Icon(Icons.Default.Delete, "Remove reminder")
-                        }
-                    }
-                    val alert = reminder.alertForEdit()
-                    OutlinedTextField(
-                        value = alert.note.orEmpty(),
-                        onValueChange = { note ->
-                            onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(note = note.ifBlank { null })) else it })
-                        },
-                        label = { Text("Fullscreen notification note") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = {
-                                mediaTargetReminderId = reminder.id
-                                mediaTargetKind = "image"
-                                imagePicker.launch("image/*")
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text(if (alert.image.isNullOrBlank()) "Pick photo/GIF" else "Change photo/GIF") }
-                        OutlinedButton(
-                            onClick = {
-                                mediaTargetReminderId = reminder.id
-                                mediaTargetKind = "audio"
-                                audioPicker.launch("audio/*")
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text(if (alert.audio.isNullOrBlank()) "Pick audio" else "Change audio") }
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            mediaTargetReminderId = reminder.id
-                            mediaTargetKind = "video"
-                            videoPicker.launch("video/*")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (alert.video.isNullOrBlank()) "Pick video" else "Change video") }
-                    alert.image?.let {
-                        Text("Photo/GIF: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    alert.video?.let {
-                        Text("Video: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    alert.audio?.let {
-                        Text("Audio: $it", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        FilterChip(
-                            selected = alert.audioLoop,
-                            onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(audioLoop = !alert.audioLoop)) else it }) },
-                            label = { Text("Loop audio") },
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        TextButton(
-                            onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(image = null)) else it }) },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Remove photo") }
-                        TextButton(
-                            onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(video = null)) else it }) },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Remove video") }
-                        TextButton(
-                            onClick = { onReminders(reminders.map { if (it.id == reminder.id) it.withAlert(alert.copy(audio = null)) else it }) },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Remove audio") }
-                    }
-                }
-            }
-        }
+        Text("Add reminders", style = MaterialTheme.typography.titleSmall)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(
                 onClick = { onReminders(reminders + quickRelative(ReminderAnchor.DUE, Duration.ofMinutes(-5), "5m before due")) },
@@ -1400,7 +1334,7 @@ private fun ReminderSpec.withAlert(alert: ReminderAlert): ReminderSpec {
     }
 }
 
-private fun copyPickedMedia(context: Context, vaultPath: String, uri: Uri, prefix: String): String? {
+internal fun copyPickedMedia(context: Context, vaultPath: String, uri: Uri, prefix: String): String? {
     val vault = File(vaultPath)
     if (!vault.isDirectory) return null
     val mediaDir = File(vault, "TaskNotes Companion/Media").apply { mkdirs() }

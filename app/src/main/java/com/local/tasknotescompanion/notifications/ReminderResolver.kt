@@ -5,6 +5,7 @@ import com.local.tasknotescompanion.domain.ReminderAnchor
 import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.ResolvedReminder
 import com.local.tasknotescompanion.domain.TaskRecord
+import com.local.tasknotescompanion.domain.savedReminderOverlay
 import java.time.LocalDateTime
 import java.time.LocalTime
 
@@ -29,6 +30,7 @@ class ReminderResolver {
                     triggerAt = dueAt,
                     description = "Due today",
                     source = "due",
+                    alert = task.savedReminderOverlay(),
                 )
             }
         } else {
@@ -47,6 +49,7 @@ class ReminderResolver {
                     triggerAt = scheduledAt,
                     description = "Scheduled now",
                     source = "scheduled",
+                    alert = task.savedReminderOverlay(),
                 )
             }
         }
@@ -94,7 +97,7 @@ class ReminderResolver {
             source = "reminder",
             repeatEvery = reminder.repeatEvery,
             repeatUntilCompleted = reminder.repeatUntilCompleted,
-            alert = reminder.alert,
+            alert = reminder.alert ?: task.savedReminderOverlay(),
             raw = reminder.raw,
         )
     }
