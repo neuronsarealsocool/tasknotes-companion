@@ -26,6 +26,7 @@ data class QuickAddDraft(
     val projects: List<String> = emptyList(),
     val contexts: List<String> = emptyList(),
     val priority: String? = null,
+    val phoneOnlyAlarm: Boolean = false,
     val timeEstimateMinutes: Int? = null,
     val alert: ReminderAlert? = null,
     val reminders: List<ReminderSpec> = emptyList(),

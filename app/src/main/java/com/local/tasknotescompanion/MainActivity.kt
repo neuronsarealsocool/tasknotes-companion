@@ -79,6 +79,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.local.tasknotescompanion.data.TaskPriorityStore
+import com.local.tasknotescompanion.domain.isPhoneOnlyAlarm
+import com.local.tasknotescompanion.domain.withPhoneOnlyAlarm
+import androidx.compose.material.icons.filled.Alarm
 import com.local.tasknotescompanion.domain.TaskPriority
 import com.local.tasknotescompanion.domain.DefaultTaskPriorities
 import com.local.tasknotescompanion.domain.createCustomPriority
@@ -358,7 +361,7 @@ data class MainState(
     val priorities: List<TaskPriority> = DefaultTaskPriorities,
 )
 
-enum class TaskFilter { TODAY, OVERDUE, UPCOMING, ALL }
+enum class TaskFilter { TODAY, OVERDUE, UPCOMING, ALL, ALARMS }
 
 internal fun List<TaskRecord>.filterBy(filter: TaskFilter, query: String, now: LocalDateTime = LocalDateTime.now()): List<TaskRecord> {
     val today = now.toLocalDate()
@@ -374,6 +377,7 @@ internal fun List<TaskRecord>.filterBy(filter: TaskFilter, query: String, now: L
                 TaskFilter.OVERDUE -> !task.isDone && isOverdue
                 TaskFilter.UPCOMING -> !task.isDone && !isOverdue && anchors.any { it.toLocalDate().isAfter(today) }
                 TaskFilter.ALL -> true
+                TaskFilter.ALARMS -> task.isPhoneOnlyAlarm && !task.isDone
             }
         }
         .filter { query.isBlank() || it.title.contains(query, true) || it.body.contains(query, true) }
@@ -497,7 +501,7 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
                     NavigationBarItem(
                         selected = state.filter == filter,
                         onClick = { viewModel.setFilter(filter) },
-                        icon = { Text(filter.name.first().toString()) },
+                        icon = { if (filter == TaskFilter.ALARMS) Icon(Icons.Default.Alarm, null) else Text(filter.name.first().toString()) },
                         label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) },
                     )
                 }
@@ -547,6 +551,7 @@ private fun TaskListScreen(state: MainState, viewModel: MainViewModel) {
                                 }
                             }
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (task.isPhoneOnlyAlarm) AssistChip(onClick = {}, label = { Text("Alarm") }, leadingIcon = { Icon(Icons.Default.Alarm, null) })
                                 task.scheduled?.let { AssistChip(onClick = {}, label = { Text("Scheduled ${formatDateWithTime(it, task.scheduledTime)}") }) }
                                 task.due?.let { AssistChip(onClick = {}, label = { Text("Due ${formatDateWithTime(it, task.dueTime)}") }) }
                                 task.priority?.let { value ->
@@ -597,6 +602,7 @@ private fun QuickAddDialog(
     var timeRemoved by remember { mutableStateOf(false) }
     var priorityRemoved by remember { mutableStateOf(false) }
     var priorityOverride by rememberSaveable { mutableStateOf<String?>(null) }
+    var phoneOnlyAlarm by rememberSaveable { mutableStateOf(false) }
     var alertNote by rememberSaveable { mutableStateOf("") }
     var alertImage by rememberSaveable { mutableStateOf<String?>(null) }
     var alertVideo by rememberSaveable { mutableStateOf<String?>(null) }
@@ -670,6 +676,7 @@ private fun QuickAddDialog(
         projects = parsed.projects.filterNot { it in removedProjects },
         contexts = parsed.contexts.filterNot { it in removedContexts },
         priority = priorityOverride ?: parsed.priority.takeUnless { priorityRemoved },
+        phoneOnlyAlarm = phoneOnlyAlarm,
         alert = ReminderAlert(
             style = "fullscreen",
             note = alertNote.ifBlank { null },
@@ -783,6 +790,7 @@ private fun QuickAddDialog(
                     }
                     AssistChip(onClick = {}, label = { Text("Task File") })
                 }
+                PhoneOnlyAlarmToggle(phoneOnlyAlarm) { phoneOnlyAlarm = it }
                 Text("Reminder overlay", style = MaterialTheme.typography.labelLarge)
                 OutlinedTextField(
                     value = alertNote,
@@ -980,6 +988,7 @@ private fun EditorScreen(
         ))
     }
     var priority by remember(task.id) { mutableStateOf(task.priority.orEmpty()) }
+    var phoneOnlyAlarm by remember(task.id) { mutableStateOf(task.isPhoneOnlyAlarm) }
     var tags by remember(task.id) { mutableStateOf(task.tags.joinToString(" ")) }
     var reminders by remember(task.id) { mutableStateOf(task.reminders) }
     var overlay by remember(task.id) { mutableStateOf(task.editorReminderOverlay()) }
@@ -1007,7 +1016,7 @@ private fun EditorScreen(
                             scheduledTime = scheduledTime,
                             tags = tags.split(" ", ",").map { it.trim() }.filter { it.isNotBlank() },
                             reminders = reminders,
-                        ).let { if (overlayChanged) it.withReminderOverlay(overlay) else it })
+                        ).withPhoneOnlyAlarm(phoneOnlyAlarm).let { if (overlayChanged) it.withReminderOverlay(overlay) else it })
                     }) { Icon(Icons.Default.Save, "Save") }
                 },
             )
@@ -1015,6 +1024,7 @@ private fun EditorScreen(
     ) { padding ->
         LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { OutlinedTextField(title, { title = it }, label = { Text(config.titleField) }, modifier = Modifier.fillMaxWidth()) }
+            item { PhoneOnlyAlarmToggle(phoneOnlyAlarm) { phoneOnlyAlarm = it } }
             item { OutlinedTextField(status, { status = it }, label = { Text(config.statusField) }, modifier = Modifier.fillMaxWidth()) }
             item {
                 PriorityDropdown(priority, priorities, onSelect = { priority = it }, onCreate = onCreatePriority)

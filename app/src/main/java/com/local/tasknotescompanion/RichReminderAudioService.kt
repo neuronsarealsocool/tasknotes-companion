@@ -8,6 +8,7 @@ import android.graphics.ImageDecoder
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -101,6 +102,9 @@ class RichReminderAudioService : Service() {
         val audio = intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_AUDIO)
         if (!audio.isNullOrBlank()) {
             play(audio, intent.getBooleanExtra(ReminderScheduler.EXTRA_ALERT_AUDIO_LOOP, true), ensureForeground = false)
+        } else if (intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_STYLE) == "alarm" &&
+            intent.getStringExtra(ReminderScheduler.EXTRA_ALERT_VIDEO).isNullOrBlank()) {
+            playSystemAlarmTone()
         } else if (!showedOverlay) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -271,6 +275,22 @@ class RichReminderAudioService : Service() {
                     .onFailure { Log.e(TAG, "Failed to delete delivered rich reminder", it) }
             }
         }.start()
+    }
+
+    private fun playSystemAlarmTone() {
+        releasePlayer()
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        runCatching {
+            player = MediaPlayer().apply {
+                setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                setDataSource(this@RichReminderAudioService, uri)
+                isLooping = true
+                prepare()
+                start()
+                Log.i(TAG, "System alarm tone playing=$isPlaying")
+            }
+        }.onFailure { Log.e(TAG, "Could not play the system alarm tone", it); releasePlayer() }
     }
 
     private fun play(path: String?, loop: Boolean, ensureForeground: Boolean = true) {

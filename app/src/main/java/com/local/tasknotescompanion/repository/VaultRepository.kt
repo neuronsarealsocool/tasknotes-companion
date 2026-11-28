@@ -6,6 +6,7 @@ import com.local.tasknotescompanion.data.TaskEntity
 import com.local.tasknotescompanion.data.readCachedTask
 import com.local.tasknotescompanion.data.toEntity
 import com.local.tasknotescompanion.data.toRecord
+import com.local.tasknotescompanion.domain.PhoneOnlyAlarmField
 import com.local.tasknotescompanion.domain.ReminderAlert
 import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.RecurrenceSpec
@@ -128,6 +129,7 @@ class VaultRepository(
             modifiedAt = System.currentTimeMillis(),
             frontmatter = TaskFrontmatter(
                 buildMap {
+                    if (draft.phoneOnlyAlarm) put(PhoneOnlyAlarmField, true)
                     put(config.titleField, title)
                     put(config.statusField, config.openStatus)
                     put(config.priorityField, draft.priority ?: "none")

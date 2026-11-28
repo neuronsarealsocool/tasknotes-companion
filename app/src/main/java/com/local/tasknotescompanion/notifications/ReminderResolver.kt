@@ -5,6 +5,7 @@ import com.local.tasknotescompanion.domain.ReminderAnchor
 import com.local.tasknotescompanion.domain.ReminderSpec
 import com.local.tasknotescompanion.domain.ResolvedReminder
 import com.local.tasknotescompanion.domain.TaskRecord
+import com.local.tasknotescompanion.domain.alarmAlert
 import com.local.tasknotescompanion.domain.savedReminderOverlay
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -54,6 +55,7 @@ class ReminderResolver {
             }
         }
         return (explicit + listOfNotNull(dueReminder, scheduledReminder))
+            .map { it.copy(alert = task.alarmAlert(it.alert)) }
             .distinctBy { it.id }
             .sortedWith(compareBy<ResolvedReminder> { it.triggerAt }.thenBy { it.id })
     }

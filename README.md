@@ -26,6 +26,7 @@ app/build/outputs/apk/debug/app-debug.apk
 - Read configured priorities from the vault TaskNotes settings and add custom names/colors. Custom definitions are saved on this device for the selected vault; task priority values are written to the standard Markdown frontmatter.
 - Preserve unknown YAML frontmatter fields while updating app-managed fields.
 - Schedule local reminder notifications from reminder metadata.
+- Mark an event as Alarm — phone only to keep it in the phone Alarms tab and hide it from the updated desktop TaskNotes calendar. The note and its recurrence/media stay intact; turning Alarm off restores desktop calendar visibility. Alarms use the device alarm sound when no custom audio or video is selected.
 - Complete tasks from notifications.
 - Create the next file for simple recurring tasks.
 

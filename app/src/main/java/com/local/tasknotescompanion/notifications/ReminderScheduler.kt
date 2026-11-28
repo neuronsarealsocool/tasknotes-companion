@@ -22,6 +22,7 @@ import com.local.tasknotescompanion.data.TaskMappingStore
 import com.local.tasknotescompanion.data.TaskDao
 import com.local.tasknotescompanion.data.toRecord
 import com.local.tasknotescompanion.domain.ResolvedReminder
+import com.local.tasknotescompanion.domain.alarmAlert
 import com.local.tasknotescompanion.domain.TaskRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,6 +74,7 @@ class ReminderScheduler(
         } else {
             LocalDateTime.now().plusMinutes(minutes)
         }
+        val alert = task.alarmAlert(null)
         val row = ScheduledNotificationEntity(
             id = "snooze_${task.id}_${System.currentTimeMillis()}",
             taskId = task.id,
@@ -85,14 +87,14 @@ class ReminderScheduler(
             repeatEveryMillis = null,
             repeatUntilCompleted = false,
             repeatWindows = null,
-            alertStyle = null,
-            alertNote = null,
-            alertImage = null,
-            alertVideo = null,
-            alertAudio = null,
-            alertAudioLoop = true,
-            alertAudioUntil = null,
-            alertAllowOverlay = false,
+            alertStyle = alert?.style,
+            alertNote = alert?.note,
+            alertImage = alert?.image,
+            alertVideo = alert?.video,
+            alertAudio = alert?.audio,
+            alertAudioLoop = alert?.audioLoop ?: true,
+            alertAudioUntil = alert?.audioUntil,
+            alertAllowOverlay = alert?.allowOverlay ?: false,
         )
         scheduledDao.insertAll(listOf(row))
         scheduleRow(row)
@@ -403,7 +405,7 @@ class ReminderScheduler(
     }
 
     private fun ScheduledNotificationEntity.hasRichAlert(): Boolean {
-        return alertStyle == "fullscreen" ||
+        return alertStyle == "fullscreen" || alertStyle == "alarm" ||
             !alertNote.isNullOrBlank() ||
             !alertImage.isNullOrBlank() ||
             !alertVideo.isNullOrBlank() ||
